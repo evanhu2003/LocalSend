@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LocalSend 電腦端</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">⇄</span>
+      <div>
+        <h1>LocalSend 電腦端</h1>
+        <p class="sub">與手錶上的 LocalSend 互傳檔案</p>
+      </div>
+    </div>
+    <div class="self">
+      <label for="alias">我的裝置名稱</label>
+      <div class="alias-row">
+        <input id="alias" maxlength="40" autocomplete="off" spellcheck="false">
+        <button id="aliasSave" class="btn small">儲存</button>
+      </div>
+      <span id="conn" class="conn off" title="與本機服務的連線">連線中…</span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- 左欄：裝置 + 傳送 -->
+    <section class="card" aria-labelledby="devTitle">
+      <div class="card-head">
+        <h2 id="devTitle">附近的裝置</h2>
+        <button id="scan" class="btn small ghost">重新掃描</button>
+      </div>
+      <ul id="devices" class="devices"></ul>
+      <p id="noDevices" class="empty">
+        還沒找到裝置。請在手錶上開啟 LocalSend 並停在「傳送」頁，或按「重新掃描」。
+      </p>
+    </section>
+
+    <section class="card" aria-labelledby="sendTitle">
+      <div class="card-head">
+        <h2 id="sendTitle">傳送</h2>
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="files" role="tab">檔案</button>
+          <button class="tab" data-tab="text" role="tab">文字</button>
+        </div>
+      </div>
+
+      <div data-pane="files">
+        <label id="drop" class="drop" for="picker">
+          <input id="picker" type="file" multiple hidden>
+          <strong>拖曳檔案到這裡</strong>
+          <span>或點一下選擇檔案</span>
+        </label>
+        <ul id="selected" class="filelist"></ul>
+        <div class="row">
+          <button id="clearSel" class="btn ghost small">清除</button>
+          <span id="selSummary" class="muted"></span>
+        </div>
+      </div>
+
+      <div data-pane="text" hidden>
+        <textarea id="text" rows="4" placeholder="輸入要傳送的文字…"></textarea>
+      </div>
+
+      <div class="send-row">
+        <span id="target" class="muted">請先在上方選擇一台裝置</span>
+        <button id="send" class="btn primary" disabled>傳送</button>
+      </div>
+
+      <ul id="jobs" class="jobs"></ul>
+    </section>
+
+    <!-- 右欄：接收 -->
+    <section class="card" aria-labelledby="recvTitle">
+      <div class="card-head">
+        <h2 id="recvTitle">接收</h2>
+        <button id="openFolder" class="btn small ghost">開啟資料夾</button>
+      </div>
+      <div id="receiving"></div>
+      <div id="messages"></div>
+      <p class="muted small">收件資料夾：<code id="recvDir"></code></p>
+      <ul id="received" class="filelist received"></ul>
+      <p id="noReceived" class="empty">還沒有收到任何檔案。</p>
+    </section>
+  </main>
+
+  <!-- 傳入請求對話框 -->
+  <div id="incoming" class="overlay" hidden>
+    <div class="dialog" role="alertdialog" aria-labelledby="incTitle" aria-describedby="incFrom">
+      <h2 id="incTitle">有人要傳檔案給你</h2>
+      <p id="incFrom"></p>
+      <ul id="incFiles" class="filelist compact"></ul>
+      <p id="incTotal" class="muted"></p>
+      <div class="countdown"><div id="incBar"></div></div>
+      <p id="incLeft" class="muted small"></p>
+      <div class="dialog-actions">
+        <button id="decline" class="btn danger">拒絕</button>
+        <button id="accept" class="btn primary">接受</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

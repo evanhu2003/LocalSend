@@ -1,0 +1,17 @@
+{
+  "name": "localsend-web-peer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LocalSend v2 相容的 PC 端節點(Node.js + 瀏覽器介面)",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js --open"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "node-forge": "1.4.0"
+  }
+}
