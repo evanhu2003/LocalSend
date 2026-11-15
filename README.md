@@ -159,8 +159,18 @@ cd app
 
 ### 網頁版電腦端
 
-互通測試是用本倉庫 `cli/` 編出的官方 Rust `localsend-cli` 和 web-peer 互傳,比對 SHA-256。
-做法與指令記錄在 [web-peer/PROTOCOL.md](web-peer/PROTOCOL.md) 與 web-peer 的提交說明中。
+沒有自動化測試腳本。互通測試是手動用本倉庫 `cli/` 編出的官方 Rust `localsend-cli` 和 web-peer 互傳,再比對 SHA-256:
+
+```bash
+# 1. 編譯官方 CLI
+cd cli && cargo build
+# 2. 啟動 web-peer(另一個視窗):web-peer\start.bat
+# 3. CLI 傳檔給 web-peer(CLI 改用 53320 埠,避開 web-peer 佔用的 53317)
+LOCALSEND_PORT=53320 ../target/debug/localsend-cli send --to <電腦IP> <檔案>
+# 4. 在網頁上按「接受」,再比對兩邊檔案的 SHA-256
+```
+
+反方向(web-peer 傳給 CLI)時,CLI 的接收端是互動模式,要在主控台按 Y 接受。
 
 ## 同步官方新版
 
