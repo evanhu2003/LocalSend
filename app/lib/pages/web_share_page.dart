@@ -201,9 +201,11 @@ class _WebSharePageState extends State<WebSharePage> with Refena {
                             padding: const EdgeInsets.all(5),
                             child: Row(
                               children: [
-                                SelectableText(
-                                  url,
-                                  style: Theme.of(context).textTheme.bodyMedium,
+                                Flexible(
+                                  child: SelectableText(
+                                    url,
+                                    style: Theme.of(context).textTheme.bodyMedium,
+                                  ),
                                 ),
                                 const SizedBox(width: 5),
                                 InkWell(

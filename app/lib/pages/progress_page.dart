@@ -21,6 +21,7 @@ import 'package:localsend_app/widget/custom_progress_bar.dart';
 import 'package:localsend_app/widget/dialogs/cancel_session_dialog.dart';
 import 'package:localsend_app/widget/dialogs/error_dialog.dart';
 import 'package:localsend_app/widget/file_thumbnail.dart';
+import 'package:localsend_app/widget/responsive_builder.dart';
 import 'package:localsend_isolates/model/dto/file_dto.dart';
 import 'package:localsend_isolates/model/file_status.dart';
 import 'package:localsend_isolates/model/session_status.dart';
@@ -252,6 +253,12 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
     }
 
     final finishedCount = transferNotifier.getStatuses(widget.sessionId).where((s) => s == FileStatus.finished).length;
+    final compact = SizingInformation.isCompactScreen(context);
+    // Keep the default 40 dp button height (no compact density) so the buttons stay easy to hit on a watch.
+    final compactButtonStyle = TextButton.styleFrom(
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+    );
 
     return PopScope(
       onPopInvokedWithResult: (didPop, result) {
@@ -274,7 +281,7 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
             ListView.builder(
               padding: EdgeInsets.only(
                 top: MediaQuery.of(context).padding.top + 20,
-                bottom: 150 + (_advanced ? _advancedProgressPanelExtraPadding : 0) + getNavBarPadding(context),
+                bottom: (compact ? 100 : 150) + (_advanced ? (compact ? 60 : _advancedProgressPanelExtraPadding) : 0) + getNavBarPadding(context),
                 left: 15,
                 right: 30,
               ),
@@ -389,20 +396,29 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      fileName,
-                                      style: const TextStyle(fontSize: 16, height: 1),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.fade,
-                                      softWrap: false,
+                              if (compact)
+                                // Let the name wrap onto a second line instead of being squeezed by the size label.
+                                Text(
+                                  '$fileName (${file.size.asReadableFileSize})',
+                                  style: const TextStyle(fontSize: 14, height: 1.1),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                )
+                              else
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        fileName,
+                                        style: const TextStyle(fontSize: 16, height: 1),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.fade,
+                                        softWrap: false,
+                                      ),
                                     ),
-                                  ),
-                                  Text(' (${file.size.asReadableFileSize})', style: const TextStyle(fontSize: 16, height: 1)),
-                                ],
-                              ),
+                                    Text(' (${file.size.asReadableFileSize})', style: const TextStyle(fontSize: 16, height: 1)),
+                                  ],
+                                ),
                               const SizedBox(height: 5),
                               if (fileStatus == FileStatus.sending)
                                 Padding(
@@ -463,10 +479,12 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
               child: Align(
                 alignment: Alignment.bottomCenter,
                 child: Padding(
-                  padding: const EdgeInsets.only(left: 10, right: 10, bottom: 10),
+                  padding: compact ? const EdgeInsets.only(left: 6, right: 6, bottom: 6) : const EdgeInsets.only(left: 10, right: 10, bottom: 10),
                   child: Card(
                     child: Padding(
-                      padding: const EdgeInsets.only(left: 15, right: 15, bottom: 5, top: 10),
+                      padding: compact
+                          ? const EdgeInsets.only(left: 10, right: 10, bottom: 2, top: 6)
+                          : const EdgeInsets.only(left: 15, right: 15, bottom: 5, top: 10),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
@@ -475,7 +493,7 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
                             status.getLabel(
                               remainingTime: _remainingTime ?? '-',
                             ),
-                            style: const TextStyle(fontSize: 20),
+                            style: TextStyle(fontSize: compact ? 16 : 20),
                           ),
                           const SizedBox(height: 5),
                           TweenAnimationBuilder(
@@ -495,38 +513,43 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
                             alignment: Alignment.topLeft,
                             firstChild: Container(),
                             secondChild: Padding(
-                              padding: const EdgeInsets.only(top: 10, bottom: 5),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    t.progressPage.total.count(
-                                      curr: finishedCount,
-                                      n: _selectedFiles.length,
-                                    ),
-                                  ),
-                                  Text(
-                                    t.progressPage.total.size(
-                                      curr: currBytes.asReadableFileSize,
-                                      n: _totalBytes == double.maxFinite.toInt() ? '-' : _totalBytes.asReadableFileSize,
-                                    ),
-                                  ),
-                                  if (speedInBytes != null)
+                              padding: compact ? const EdgeInsets.only(top: 5) : const EdgeInsets.only(top: 10, bottom: 5),
+                              child: DefaultTextStyle.merge(
+                                style: compact ? const TextStyle(fontSize: 12) : null,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     Text(
-                                      t.progressPage.total.speed(
-                                        speed: speedInBytes.asReadableFileSize,
+                                      t.progressPage.total.count(
+                                        curr: finishedCount,
+                                        n: _selectedFiles.length,
                                       ),
                                     ),
-                                ],
+                                    Text(
+                                      t.progressPage.total.size(
+                                        curr: currBytes.asReadableFileSize,
+                                        n: _totalBytes == double.maxFinite.toInt() ? '-' : _totalBytes.asReadableFileSize,
+                                      ),
+                                    ),
+                                    if (speedInBytes != null)
+                                      Text(
+                                        t.progressPage.total.speed(
+                                          speed: speedInBytes.asReadableFileSize,
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                          const SizedBox(height: 5),
+                          if (!compact) const SizedBox(height: 5),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               TextButton.icon(
-                                style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.onSurface),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Theme.of(context).colorScheme.onSurface,
+                                ).merge(compact ? compactButtonStyle : null),
                                 onPressed: () {
                                   setState(() => _advanced = !_advanced);
                                 },
@@ -534,7 +557,9 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
                                 label: Text(_advanced ? t.general.hide : t.general.advanced),
                               ),
                               TextButton.icon(
-                                style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.onSurface),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Theme.of(context).colorScheme.onSurface,
+                                ).merge(compact ? compactButtonStyle : null),
                                 onPressed: () => _exit(closeSession: true),
                                 icon: Icon(status == SessionStatus.sending ? Icons.close : Icons.check_circle),
                                 label: Text(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:localsend_app/widget/responsive_builder.dart';
 import 'package:routerino/routerino.dart';
 
 class CustomBottomSheet extends StatelessWidget {
@@ -13,12 +14,17 @@ class CustomBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RouterinoBottomSheet(
-      title: title,
-      description: description,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      borderRadius: 20,
-      child: child,
+    // Scrollable so that the sheet never overflows when it is taller than the space the modal route allows
+    // (e.g. on tiny smartwatch screens). When the content fits, this is layout-identical to no scroll view.
+    return SingleChildScrollView(
+      child: RouterinoBottomSheet(
+        title: title,
+        description: description,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: 20,
+        padding: SizingInformation.isCompactScreen(context) ? const EdgeInsets.all(12) : const EdgeInsets.all(20),
+        child: child,
+      ),
     );
   }
 }

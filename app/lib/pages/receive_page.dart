@@ -17,6 +17,7 @@ import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/native/taskbar_helper.dart';
 import 'package:localsend_app/util/ui/snackbar.dart';
 import 'package:localsend_app/widget/device_bage.dart';
+import 'package:localsend_app/widget/responsive_builder.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:localsend_isolates/model/dto/file_dto.dart';
@@ -124,6 +125,15 @@ class _ReceivePageState extends State<ReceivePage> with Refena {
                                           final alias = senderFavoriteEntry?.alias ?? vm.sender.alias;
                                           if (alias.isEmpty) {
                                             return Text('', style: TextStyle(fontSize: smallUi ? 32 : 48));
+                                          }
+                                          if (SizingInformation.isCompactScreen(context)) {
+                                            return Text(
+                                              alias,
+                                              style: const TextStyle(fontSize: 22),
+                                              textAlign: TextAlign.center,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            );
                                           }
                                           return FittedBox(
                                             child: Text(

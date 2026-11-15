@@ -9,25 +9,27 @@ class SendModeHelpDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(t.dialogs.sendModeHelp.title),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SendModeItem(
-            mode: t.sendTab.sendModes.single,
-            explanation: t.dialogs.sendModeHelp.single,
-          ),
-          const SizedBox(height: 10),
-          _SendModeItem(
-            mode: t.sendTab.sendModes.multiple,
-            explanation: t.dialogs.sendModeHelp.multiple,
-          ),
-          const SizedBox(height: 10),
-          _SendModeItem(
-            mode: t.sendTab.sendModes.link,
-            explanation: t.dialogs.sendModeHelp.link,
-          ),
-        ],
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SendModeItem(
+              mode: t.sendTab.sendModes.single,
+              explanation: t.dialogs.sendModeHelp.single,
+            ),
+            const SizedBox(height: 10),
+            _SendModeItem(
+              mode: t.sendTab.sendModes.multiple,
+              explanation: t.dialogs.sendModeHelp.multiple,
+            ),
+            const SizedBox(height: 10),
+            _SendModeItem(
+              mode: t.sendTab.sendModes.link,
+              explanation: t.dialogs.sendModeHelp.link,
+            ),
+          ],
+        ),
       ),
       actions: [
         TextButton(

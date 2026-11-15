@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:localsend_app/config/theme.dart';
+import 'package:localsend_app/widget/responsive_builder.dart';
 
 class CustomListTile extends StatelessWidget {
   final Widget? icon;
@@ -42,9 +43,9 @@ class CustomListTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    FittedBox(
-                      child: title,
-                    ),
+                    // On compact screens, shrink-to-fit makes long titles unreadable;
+                    // the title is expected to ellipsize itself instead.
+                    if (SizingInformation.isCompactScreen(context)) title else FittedBox(child: title),
                     const SizedBox(height: 5),
                     subTitle,
                   ],

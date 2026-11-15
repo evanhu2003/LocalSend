@@ -15,6 +15,7 @@ import 'package:localsend_app/widget/animations/initial_fade_transition.dart';
 import 'package:localsend_app/widget/animations/initial_slide_transition.dart';
 import 'package:localsend_app/widget/dialogs/error_dialog.dart';
 import 'package:localsend_app/widget/list_tile/device_list_tile.dart';
+import 'package:localsend_app/widget/responsive_builder.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
 import 'package:localsend_isolates/model/device.dart';
 import 'package:localsend_isolates/model/session_status.dart';
@@ -97,6 +98,8 @@ class _SendPageState extends State<SendPage> with Refena {
     final targetDevice = sendState?.target ?? _targetDevice!;
     final targetFavoriteEntry = ref.watch(favoritesProvider.select((state) => state.findDevice(targetDevice)));
     final waiting = sendState?.status == SessionStatus.waiting;
+    final compact = SizingInformation.isCompactScreen(context);
+    final gap = compact ? 8.0 : 20.0;
 
     return PopScope(
       onPopInvokedWithResult: (didPop, result) {
@@ -112,55 +115,57 @@ class _SendPageState extends State<SendPage> with Refena {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: ResponsiveListView.defaultMaxWidth),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 30),
+                padding: EdgeInsets.symmetric(horizontal: 15, vertical: compact ? 12 : 30),
                 child: Column(
                   children: [
                     Expanded(
-                      child: Column(
-                        children: [
-                          InitialSlideTransition(
-                            origin: const Offset(0, -1),
-                            duration: const Duration(milliseconds: 400),
-                            child: DeviceListTile(
-                              device: myDevice,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          const InitialFadeTransition(
-                            duration: Duration(milliseconds: 300),
-                            delay: Duration(milliseconds: 400),
-                            child: Icon(Icons.arrow_downward),
-                          ),
-                          const SizedBox(height: 20),
-                          Hero(
-                            tag: 'device-${targetDevice.ip}',
-                            child: DeviceListTile(
-                              device: targetDevice,
-                              nameOverride: targetFavoriteEntry?.alias,
-                            ),
-                          ),
-                          InitialFadeTransition(
-                            duration: const Duration(milliseconds: 300),
-                            delay: const Duration(milliseconds: 400),
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: TextButton.icon(
-                                onPressed: !targetDevice.https
-                                    ? null
-                                    : () async => await context.push(
-                                        () => VerifyPage(
-                                          fingerprint: CombinedFingerprint.load(context, targetDevice.fingerprint),
-                                        ),
-                                      ),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Theme.of(context).colorScheme.onSurface,
-                                ),
-                                icon: Icon(Icons.verified_user),
-                                label: Text(t.verifyPage.title),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            InitialSlideTransition(
+                              origin: const Offset(0, -1),
+                              duration: const Duration(milliseconds: 400),
+                              child: DeviceListTile(
+                                device: myDevice,
                               ),
                             ),
-                          ),
-                        ],
+                            SizedBox(height: gap),
+                            const InitialFadeTransition(
+                              duration: Duration(milliseconds: 300),
+                              delay: Duration(milliseconds: 400),
+                              child: Icon(Icons.arrow_downward),
+                            ),
+                            SizedBox(height: gap),
+                            Hero(
+                              tag: 'device-${targetDevice.ip}',
+                              child: DeviceListTile(
+                                device: targetDevice,
+                                nameOverride: targetFavoriteEntry?.alias,
+                              ),
+                            ),
+                            InitialFadeTransition(
+                              duration: const Duration(milliseconds: 300),
+                              delay: const Duration(milliseconds: 400),
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: TextButton.icon(
+                                  onPressed: !targetDevice.https
+                                      ? null
+                                      : () async => await context.push(
+                                          () => VerifyPage(
+                                            fingerprint: CombinedFingerprint.load(context, targetDevice.fingerprint),
+                                          ),
+                                        ),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Theme.of(context).colorScheme.onSurface,
+                                  ),
+                                  icon: Icon(Icons.verified_user),
+                                  label: Text(t.verifyPage.title),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     if (sendState != null)
@@ -171,7 +176,7 @@ class _SendPageState extends State<SendPage> with Refena {
                           children: [
                             switch (sendState.status) {
                               SessionStatus.waiting => Padding(
-                                padding: const EdgeInsets.only(bottom: 20),
+                                padding: EdgeInsets.only(bottom: gap),
                                 child: sendState.hashedFileCount < sendState.files.length
                                     ? Column(
                                         children: [
@@ -179,7 +184,7 @@ class _SendPageState extends State<SendPage> with Refena {
                                             t.sendPage.calculatingChecksum(curr: sendState.hashedFileCount, n: sendState.files.length),
                                             textAlign: TextAlign.center,
                                           ),
-                                          const SizedBox(height: 15),
+                                          SizedBox(height: compact ? 8 : 15),
                                           SizedBox(
                                             width: 200,
                                             child: LinearProgressIndicator(
@@ -191,7 +196,7 @@ class _SendPageState extends State<SendPage> with Refena {
                                     : Text(t.sendPage.waiting, textAlign: TextAlign.center),
                               ),
                               SessionStatus.declined => Padding(
-                                padding: const EdgeInsets.only(bottom: 20),
+                                padding: EdgeInsets.only(bottom: gap),
                                 child: Text(
                                   t.sendPage.rejected,
                                   style: TextStyle(color: Theme.of(context).colorScheme.warning),
@@ -199,7 +204,7 @@ class _SendPageState extends State<SendPage> with Refena {
                                 ),
                               ),
                               SessionStatus.tooManyAttempts => Padding(
-                                padding: const EdgeInsets.only(bottom: 20),
+                                padding: EdgeInsets.only(bottom: gap),
                                 child: Text(
                                   t.sendPage.tooManyAttempts,
                                   style: TextStyle(color: Theme.of(context).colorScheme.warning),
@@ -207,7 +212,7 @@ class _SendPageState extends State<SendPage> with Refena {
                                 ),
                               ),
                               SessionStatus.recipientBusy => Padding(
-                                padding: const EdgeInsets.only(bottom: 20),
+                                padding: EdgeInsets.only(bottom: gap),
                                 child: Text(
                                   t.sendPage.busy,
                                   style: TextStyle(color: Theme.of(context).colorScheme.warning),
@@ -215,11 +220,13 @@ class _SendPageState extends State<SendPage> with Refena {
                                 ),
                               ),
                               SessionStatus.finishedWithErrors => Padding(
-                                padding: const EdgeInsets.only(bottom: 20),
+                                padding: EdgeInsets.only(bottom: gap),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Text(t.general.error, style: TextStyle(color: Theme.of(context).colorScheme.warning)),
+                                    Flexible(
+                                      child: Text(t.general.error, style: TextStyle(color: Theme.of(context).colorScheme.warning)),
+                                    ),
                                     if (sendState.errorMessage != null)
                                       TextButton(
                                         style: TextButton.styleFrom(

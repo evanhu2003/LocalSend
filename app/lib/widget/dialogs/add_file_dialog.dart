@@ -4,6 +4,7 @@ import 'package:localsend_app/util/native/file_picker.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/widget/big_button.dart';
 import 'package:localsend_app/widget/dialogs/custom_bottom_sheet.dart';
+import 'package:localsend_app/widget/responsive_builder.dart';
 import 'package:refena_flutter/addons.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
@@ -42,13 +43,26 @@ class AddFileDialog extends StatelessWidget {
         ),
       );
     } else {
-      await context.pushBottomSheet(
-        () => CustomBottomSheet(
-          title: t.dialogs.addFile.title,
-          description: t.dialogs.addFile.content,
-          child: AddFileDialog(options: options),
-        ),
+      CustomBottomSheet builder() => CustomBottomSheet(
+        title: t.dialogs.addFile.title,
+        description: t.dialogs.addFile.content,
+        child: AddFileDialog(options: options),
       );
+      if (SizingInformation.isCompactScreen(context)) {
+        // The default modal sheet is capped at 9/16 of the screen height, which hides most picker options on tiny
+        // screens (smartwatches). Let the sheet use the full available height instead.
+        await showModalBottomSheet(
+          context: context,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          isScrollControlled: true,
+          useSafeArea: true,
+          routeSettings: const RouteSettings(name: 'CustomBottomSheet'),
+          builder: (_) => builder(),
+        );
+      } else {
+        await context.pushBottomSheet(builder);
+      }
     }
   }
 

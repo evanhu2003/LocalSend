@@ -14,6 +14,7 @@ import 'package:localsend_app/widget/animations/initial_fade_transition.dart';
 import 'package:localsend_app/widget/column_list_view.dart';
 import 'package:localsend_app/widget/custom_icon_button.dart';
 import 'package:localsend_app/widget/local_send_logo.dart';
+import 'package:localsend_app/widget/responsive_builder.dart';
 import 'package:localsend_app/widget/responsive_list_view.dart';
 import 'package:localsend_app/widget/rotating_widget.dart';
 import 'package:localsend_isolates/util/sleep.dart';
@@ -56,6 +57,7 @@ class _ReceiveTabState extends State<ReceiveTab> {
     final alias = context.watch(settingsProvider.select((s) => s.alias));
     final serverState = context.watch(serverProvider);
     final localIps = context.watch(localIpProvider.select((s) => s.localIps));
+    final compact = SizingInformation.isCompactScreen(context);
 
     return Stack(
       children: [
@@ -63,7 +65,8 @@ class _ReceiveTabState extends State<ReceiveTab> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: ResponsiveListView.defaultMaxWidth),
             child: Padding(
-              padding: const EdgeInsets.all(30),
+              // On compact screens, keep the scrolling content below the corner buttons.
+              padding: compact ? const EdgeInsets.fromLTRB(16, 48, 16, 0) : const EdgeInsets.all(30),
               child: ColumnListView(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -81,21 +84,23 @@ class _ReceiveTabState extends State<ReceiveTab> {
                               return RotatingWidget(
                                 duration: const Duration(seconds: 15),
                                 spinning: serverState != null && animations && activeTab == HomeTab.receive,
-                                child: const LocalSendLogo(withText: false),
+                                child: compact
+                                    ? const SizedBox.square(dimension: 120, child: LocalSendLogo(withText: false))
+                                    : const LocalSendLogo(withText: false),
                               );
                             },
                           ),
                         ),
                         FittedBox(
                           fit: BoxFit.scaleDown,
-                          child: Text(serverState?.alias ?? alias, style: const TextStyle(fontSize: 48)),
+                          child: Text(serverState?.alias ?? alias, style: TextStyle(fontSize: compact ? 32 : 48)),
                         ),
                         InitialFadeTransition(
                           duration: const Duration(milliseconds: 300),
                           delay: const Duration(milliseconds: 500),
                           child: Text(
                             serverState == null ? t.general.offline : localIps.map((ip) => '#${ip.visualId}').toSet().join(' '),
-                            style: const TextStyle(fontSize: 24),
+                            style: TextStyle(fontSize: compact ? 18 : 24),
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -151,7 +156,7 @@ class _CornerButtons extends StatelessWidget {
     return Align(
       alignment: Alignment.topRight,
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(SizingInformation.isCompactScreen(context) ? 4 : 20),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
@@ -198,7 +203,7 @@ class _InfoBox extends StatelessWidget {
       secondChild: Align(
         alignment: Alignment.topRight,
         child: Padding(
-          padding: const EdgeInsets.all(15),
+          padding: EdgeInsets.all(SizingInformation.isCompactScreen(context) ? 0 : 15),
           child: Card(
             child: Padding(
               padding: const EdgeInsets.all(15),

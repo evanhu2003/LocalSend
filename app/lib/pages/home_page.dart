@@ -170,6 +170,9 @@ class _HomePageState extends State<HomePage> with Refena {
             ),
             bottomNavigationBar: sizingInformation.isMobile
                 ? NavigationBar(
+                    // Square smartwatches: the default 80 dp bar would eat a fifth of the screen.
+                    height: SizingInformation.isCompactScreen(context) ? 56 : null,
+                    labelBehavior: SizingInformation.isCompactScreen(context) ? NavigationDestinationLabelBehavior.onlyShowSelected : null,
                     selectedIndex: vm.currentTab.index,
                     onDestinationSelected: (index) => vm.changeTab(HomeTab.values[index]),
                     destinations: HomeTab.values.map((tab) {

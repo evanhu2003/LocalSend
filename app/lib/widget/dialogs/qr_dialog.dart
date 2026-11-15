@@ -3,6 +3,7 @@ import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/state/send/web/web_download_state.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
+import 'package:localsend_app/widget/responsive_builder.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
@@ -29,61 +30,72 @@ class QrDialog extends StatelessWidget {
       webDownloadState = null;
     }
 
+    // On compact screens (e.g. watches) the fixed 200dp QR is wider than the dialog content area.
+    // Subtract the dialog inset (2 * 40), content padding (2 * 24) and QR padding (2 * 8).
+    final double qrSize;
+    if (SizingInformation.isCompactScreen(context)) {
+      qrSize = (MediaQuery.sizeOf(context).width - 144).clamp(120.0, 200.0);
+    } else {
+      qrSize = 200;
+    }
+
     return AlertDialog(
       title: Text(t.dialogs.qr.title),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: SizedBox(
-              width: 200,
-              height: 200,
-              child: PrettyQrView.data(
-                errorCorrectLevel: QrErrorCorrectLevel.Q,
-                data: data,
-                decoration: PrettyQrDecoration(
-                  shape: PrettyQrSmoothSymbol(
-                    roundFactor: 0,
-                    color: Theme.of(context).colorScheme.onSurface,
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: SizedBox(
+                width: qrSize,
+                height: qrSize,
+                child: PrettyQrView.data(
+                  errorCorrectLevel: QrErrorCorrectLevel.Q,
+                  data: data,
+                  decoration: PrettyQrDecoration(
+                    shape: PrettyQrSmoothSymbol(
+                      roundFactor: 0,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(label ?? data, textAlign: TextAlign.center),
-          if (listenIncomingWebDownloadRequests && webDownloadState != null)
-            Builder(
-              builder: (context) {
-                final pending = webDownloadState?.sessions.values.fold<int>(0, (prev, curr) => prev + (curr.pending ? 1 : 0)) ?? 0;
-                if (pending != 0) {
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 5),
-                    child: Text(
-                      t.webSharePage.pendingRequests(n: pending),
-                      style: TextStyle(color: Theme.of(context).colorScheme.warning),
-                      textAlign: TextAlign.center,
-                    ),
-                  );
-                } else {
-                  return Container();
-                }
-              },
-            ),
-          if (pin != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.vpn_key),
-                  const SizedBox(width: 5),
-                  Text(pin!),
-                ],
+            const SizedBox(height: 10),
+            Text(label ?? data, textAlign: TextAlign.center),
+            if (listenIncomingWebDownloadRequests && webDownloadState != null)
+              Builder(
+                builder: (context) {
+                  final pending = webDownloadState?.sessions.values.fold<int>(0, (prev, curr) => prev + (curr.pending ? 1 : 0)) ?? 0;
+                  if (pending != 0) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: Text(
+                        t.webSharePage.pendingRequests(n: pending),
+                        style: TextStyle(color: Theme.of(context).colorScheme.warning),
+                        textAlign: TextAlign.center,
+                      ),
+                    );
+                  } else {
+                    return Container();
+                  }
+                },
               ),
-            ),
-        ],
+            if (pin != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.vpn_key),
+                    const SizedBox(width: 5),
+                    Text(pin!),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
       actions: [
         TextButton(
