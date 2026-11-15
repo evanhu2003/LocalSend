@@ -1,333 +1,189 @@
-# LocalSend
+# LocalSend 手錶版
 
-[![CI status][ci-badge]][ci-workflow]
-[![Translations][translate-badge]][translate-link]
-[![Packaging status][packaging-badge]][packaging-link]
+這是 [LocalSend](https://github.com/localsend/localsend) 的個人修改版,用來在**區域網路內,讓智慧手錶和電腦互傳檔案**。
 
-[ci-badge]: https://github.com/localsend/localsend/actions/workflows/ci.yml/badge.svg
-[ci-workflow]: https://github.com/localsend/localsend/actions/workflows/ci.yml
-[translate-badge]: https://hosted.weblate.org/widget/localsend/app/svg-badge.svg
-[translate-link]: https://hosted.weblate.org/engage/localsend/
-[packaging-badge]: https://repology.org/badge/tiny-repos/localsend.svg
-[packaging-link]: https://repology.org/project/localsend/versions
+和官方版相比,主要多了兩樣東西:
 
-[Homepage][homepage] • [Discord][discord] • [GitHub][github] • [Codeberg][codeberg]
+1. **手錶小螢幕適配**:讓 Android App 能在 326x400dp 的方形手錶上正常操作。
+2. **網頁版電腦端(`web-peer/`)**:電腦不用安裝 LocalSend 桌面版,雙擊 `start.bat` 啟動 Node.js 服務,用瀏覽器就能收發檔案。
 
-[English (Default)](README.md) • [中文](/support/readme/README_ZH.md)
+> 本倉庫只供個人使用,不會送回 LocalSend 官方(官方不接受 AI 產生的程式碼貢獻)。
 
-[homepage]: https://localsend.org
-[discord]: https://discord.gg/GSRWmQNP87
-[github]: https://github.com/localsend/localsend
-[codeberg]: https://codeberg.org/localsend/localsend
+## 目前狀態
 
-LocalSend is a free, open-source app that allows you to securely share files and messages with nearby devices over your local network without needing an internet connection.
+| 項目 | 狀態 |
+|---|---|
+| 官方基底版本 | LocalSend 1.18.2(官方 `main` 的 `2e7ef197`,2026-11-11) |
+| 手錶 App | 已在實機編譯、安裝,傳檔測試通過 |
+| 網頁版電腦端 | 已和手錶實機互傳文字;也和官方 Rust CLI 雙向互通測試通過(SHA-256 相符) |
+| 手機、平板、桌面版外觀 | 和官方版相同(手機尺寸截圖逐像素比對無差異) |
+| iOS、macOS、Linux、Windows 桌面版 | 沒有修改,也沒有重新編譯或測試 |
+| GitHub Actions | 沿用官方的工作流程,沒有針對本倉庫調整,不保證能跑 |
+| Dependabot | 已停用,本倉庫只在 `main` 開發 |
 
-- [About](#about)
-- [Sponsors](#sponsors)
-- [Screenshots](#screenshots)
-- [Download](#download)
-- [How It Works](#how-it-works)
-- [Dependency Hierarchy](#dependency-hierarchy)
-- [Getting Started](#getting-started)
-- [Command Line Interface](#command-line-interface)
-- [Contributing](#contributing)
-  - [Translation](#translation)
-  - [Bug Fixes and Improvements](#bug-fixes-and-improvements)
-- [Troubleshooting](#troubleshooting)
-- [Building](#building)
-  - [Android](#android)
-  - [iOS](#ios)
-  - [macOS](#macos)
-  - [Windows](#windows)
-  - [Linux](#linux)
+## 實測裝置
 
-## About
+| 項目 | 數值 |
+|---|---|
+| 手錶 | XG_Watch(紫光展銳 W527,小糯米系統) |
+| 系統 | Android 9(API 28),沒有 Google 服務 |
+| 螢幕 | 408x502 px、200 dpi,換算 326x400 dp |
+| CPU 架構 | arm64-v8a、armeabi-v7a |
+| 電腦 | Windows 11,Node.js v26 |
 
-LocalSend is a cross-platform app that enables secure communication between devices using a REST API and HTTPS encryption. Unlike other messaging apps that rely on external servers, LocalSend doesn't require an internet connection or third-party servers, making it a fast and reliable solution for local communication.
+## 快速開始
 
-## Sponsors
+### 1. 手錶:安裝 App
 
-This project is tested with BrowserStack
+1. 依照下方「[編譯手錶 APK](#編譯手錶-apk)」產生 `app-release.apk`。
+2. 在電腦上開一個簡單的下載服務,讓手錶下載 APK:
+   ```bash
+   cd app/build/app/outputs/flutter-apk
+   python -m http.server 8765
+   ```
+3. 手錶瀏覽器開啟 `http://<電腦IP>:8765/app-release.apk`(或把網址做成 QR 碼讓手錶掃描)。
+4. 在瀏覽器的「下載」清單點開 APK,允許「安裝未知來源的應用程式」。
 
-Supported by TestMu AI
+### 2. 電腦:啟動網頁版
 
-<a href="https://www.testmuai.com/?utm_medium=sponsor&utm_source=localsend" target="_blank">
-    <img src="https://localsend.org/img/sponsors/tesmu.svg" style="vertical-align: middle;" width="250" height="45" />
-</a>
+1. 安裝 [Node.js](https://nodejs.org/) 18 以上。
+2. 雙擊 `web-peer\start.bat`。第一次會自動安裝套件,並開啟 `http://127.0.0.1:53318`。
+3. Windows 防火牆跳出提示時,**要勾「公用網路」**(如果你的 Wi-Fi 是公用網路),否則手錶找不到電腦。
+   也可以把 Wi-Fi 的網路類型改成「私人網路」。
+4. 手錶和電腦連同一個 Wi-Fi,打開手錶上的 LocalSend,雙方就會出現在彼此的「附近的裝置」。
 
-## Screenshots
+詳細用法、防火牆設定與疑難排解,請見 [web-peer/README.md](web-peer/README.md)。
 
-<img src="https://localsend.org/img/screenshot-iphone.webp" alt="iPhone screenshot" height="300"/> <img src="https://localsend.org/img/screenshot-pc.webp" alt="PC screenshot" height="300"/>
+> 電腦端也可以直接安裝官方的 LocalSend 桌面版,協定完全相容。
 
-## Download
+## 和官方版的差異
 
-[![Packaging status](https://repology.org/badge/tiny-repos/localsend.svg)](https://repology.org/project/localsend/versions)
+### 手錶小螢幕適配(`app/lib/`)
 
-It is recommended to download the app either from an app store or from a package manager because the app does not have an auto-update.
+所有縮小、精簡的調整都只在「小螢幕」時生效,判斷條件是
+`SizingInformation.isCompactScreen(context)`:短邊 < 360dp **且** 長邊 < 480dp。
+一般手機的長邊至少約 480dp,所以不受影響。
 
-| Windows                 | macOS                   | Linux              | Android        | iOS           | Fire OS    |
-|-------------------------|-------------------------|--------------------|----------------|---------------|------------|
-| [Winget][]              | [App Store][]           | [Flathub][]        | [Play Store][] | [App Store][] | [Amazon][] |
-| [Scoop][]               | [Homebrew][]            | [Nixpkgs][]        | [F-Droid][]    |               |            |
-| [Chocolatey][]          | [DMG Installer][latest] | [Snap][]           | [APK][latest]  |               |            |
-| [EXE Installer][latest] |                         | [AUR][]            |                |               |            |
-| [Portable ZIP][latest]  |                         | [TAR][latest]      |                |               |            |
-|                         |                         | [DEB][latest]      |                |               |            |
-|                         |                         | [AppImage][latest] |                |               |            |
+| 畫面 | 官方版在手錶上的問題 | 修改後 |
+|---|---|---|
+| 傳送等待頁 | 內容溢出,狀態文字和「驗證」按鈕重疊 | 上半部可以捲動,「取消」固定在底部 |
+| 新增檔案面板 | 只看得到第一排按鈕 | 面板可用整個螢幕高度,6 個選項都能點 |
+| 進度頁 | 底部卡片佔掉大半螢幕,檔名被截到約 10 個字 | 卡片縮小,檔名可換行 |
+| QR 碼對話框 | 固定 200x200,網址和「關閉」重疊 | QR 依寬度縮放,內容可以捲動 |
+| 說明對話框 | 文字被截斷 | 內容可以捲動 |
+| 連結分享頁 | 網址列太寬,最後一個按鈕被裁掉 | 網址換行,三個按鈕都完整 |
+| 裝置名稱 | 名稱太長時字被縮到幾乎看不見 | 改成用「…」截斷 |
+| 底部導覽列 | 高 80dp,內容只剩約 320dp | 改成 56dp,只顯示選中項的文字 |
 
-Read more about [distribution channels][].
+### 網頁版電腦端(`web-peer/`)
 
-Windows binaries are signed. Read more about the [Code signing policy][].
+- 用 Node.js 實作 LocalSend v2 協定:HTTPS 雙向憑證、連接埠 53317、多播探索,手錶 App 不需要改任何設定。
+- 網頁介面只綁在 `127.0.0.1:53318`,區網裡的其他裝置看不到;會擋下其他網站從瀏覽器發出的請求。
+- 收到的檔案存在 `web-peer/received/`,同名不覆蓋,傳輸中斷不留殘檔。
+- 唯一的相依套件是 `node-forge`(產生自簽憑證)。
+- 協定規格整理在 [web-peer/PROTOCOL.md](web-peer/PROTOCOL.md),每條規則都附官方 Rust 原始碼的檔案與行號。
 
-> [!CAUTION]
-> **Unofficial MSIX preview:** you can try builds from the latest commits at [localsend.ob-buff.dev](https://localsend.ob-buff.dev/). Stability is not guaranteed and all custom code tweaks are listed on that site.
+### 其他
 
-[windows store]: https://www.microsoft.com/store/apps/9NCB4Z0TZ6RR
-[app store]: https://apps.apple.com/us/app/localsend/id1661733229
-[play store]: https://play.google.com/store/apps/details?id=org.localsend.localsend_app
-[f-droid]: https://f-droid.org/packages/org.localsend.localsend_app
-[amazon]: https://www.amazon.com/dp/B0BW6MP732
-[winget]: https://github.com/microsoft/winget-pkgs/tree/master/manifests/l/LocalSend/LocalSend
-[scoop]: https://scoop.sh/#/apps?s=0&d=1&o=true&q=localsend&id=fb88113be361ca32c0dcac423cb4afdeda0b0c66
-[chocolatey]: https://community.chocolatey.org/packages/localsend
-[homebrew]: https://formulae.brew.sh/cask/localsend
-[flathub]: https://flathub.org/apps/details/org.localsend.localsend_app
-[nixpkgs]: https://search.nixos.org/packages?show=localsend
-[snap]: https://snapcraft.io/localsend
-[aur]: https://aur.archlinux.org/packages/localsend-bin
-[latest]: https://github.com/localsend/localsend/releases/latest
-[distribution channels]: https://github.com/localsend/localsend/blob/main/CONTRIBUTING.md#distribution
-[code signing policy]: https://github.com/localsend/localsend/blob/main/CODE_SIGNING.md
+- 移除 `.github/dependabot.yml`。
+- `app/android/gradle.properties` 加入 Flutter 遷移工具產生的兩行相容設定(`android.builtInKotlin=false`、`android.newDsl=false`)。
 
-**Compatibility**
+## 編譯手錶 APK
 
-| Platform | Minimum Version | Note                                                                                                                        |
-|----------|-----------------|-----------------------------------------------------------------------------------------------------------------------------|
-| Android  | 7.0             | The last version to support Android 5 and 6 is v1.17.0.                                                                     |
-| iOS      | 15.0            | The last version to support iOS 13 and 14 is v1.18.2 (sharing from other apps requires iOS 14), and iOS 12 is v1.17.0.       |
-| macOS    | 12 Monterey     | The last version to support macOS 11 is v1.18.2. Use OpenCore Legacy Patcher 2.0.2 (See [#1005](https://github.com/localsend/localsend/issues/1005#issuecomment-2449899384)) |
-| Windows  | 10              | The last version to support Windows 7 is v1.15.4.   |
-| Linux    | N.A.            | Deps: Gnome: `xdg-desktop-portal` and `xdg-desktop-portal-gtk`, KDE: `xdg-desktop-portal` and `xdg-desktop-portal-kde`      |
+### 需要的工具
 
-## Setup
+| 工具 | 版本 |
+|---|---|
+| Flutter | 3.47.9(本機裝在 `C:\flutter`,沒有使用 fvm) |
+| Rust | 1.97.1,另加 `aarch64-linux-android`、`armv7-linux-androideabi`、`x86_64-linux-android` 編譯目標 |
+| Android SDK | 含 NDK,建置時 Gradle 會自動下載需要的版本 |
+| Java | 17 |
+| Visual Studio | C++ 編譯工具(Rust 在 Windows 上需要) |
 
-In most cases, LocalSend should work out of the box. However, if you are having trouble sending or receiving files, you may need to configure your firewall to allow LocalSend to communicate over your local network.
+LocalSend 的網路功能是 Rust 寫的,所以編 Android 版一定要裝 Rust。
 
-| Traffic Type | Protocol | Port  | Action |
-|--------------|----------|-------|--------|
-| Incoming     | TCP, UDP | 53317 | Allow  |
-| Outgoing     | TCP, UDP | Any   | Allow  |
+### 簽名設定(只需要做一次)
 
-On Linux, for example with `ufw`: `sudo ufw allow 53317`. With `firewalld`: `sudo firewall-cmd --permanent --add-port=53317/tcp`, `sudo firewall-cmd --permanent --add-port=53317/udp`, then `sudo firewall-cmd --reload`.
+建立 `app/android/key.properties`(已被 `.gitignore` 排除),指向 Android 的 debug 金鑰:
 
-Also make sure to disable AP isolation on your router. It should be usually disabled by default but some routers may have it enabled (especially guest networks).
-See [troubleshooting](#troubleshooting) for more information.
-
-**Portable Mode**
-
-(Introduced in v1.13.0)
-
-Create a file named `settings.json` located in the same directory as the executable.
-This file can be empty.
-The app will use this file to store settings instead of the default location.
-
-**Start hidden**
-
-(Updated in v1.15.0)
-
-To start the app hidden (only in tray), use the `--hidden` flag (example: `localsend_app.exe --hidden`).
-
-On v1.14.0 and earlier, the app starts hidden if `autostart` flag is set, and the hidden setting is enabled.
-
-## How It Works
-
-LocalSend uses a secure communication protocol that allows devices to communicate with each other using a REST API. All data is sent securely over HTTPS, and the TLS/SSL certificate is generated on the fly on each device, ensuring maximum security.
-
-For more information on the LocalSend Protocol, see the [documentation](https://github.com/localsend/protocol).
-
-## Dependency Hierarchy
-
-![Dependency hierarchy](support/docs/dependency-hierarchy.svg)
-
-## Getting Started
-
-To compile LocalSend from the source code, follow these steps:
-
-1. Install Flutter [directly](https://flutter.dev) or using [fvm](https://fvm.app) (see [version required](.fvmrc))
-2. Install [Rust](https://www.rust-lang.org/tools/install)
-3. Clone the `LocalSend` repository
-4. Run `cd app` to enter the app directory
-5. Run `flutter pub get` to download dependencies
-6. Run `flutter run` to start the app
-
-> [!NOTE]
-> LocalSend currently requires an older Flutter version (specified in [.fvmrc](.fvmrc))
-> and thus build issues may be caused by a mismatch between the required and the (system-wide) installed Flutter version.  
-> To make development more consistent, LocalSend uses [fvm](https://fvm.app) to manage the project Flutter version.
-> After installing `fvm`, run `fvm flutter` instead of `flutter`.
-
-## Command Line Interface
-
-The LocalSend CLI is a terminal client built on LocalSend Protocol v2.
-
-On macOS and Linux, install the CLI with [Homebrew](https://brew.sh):
-
-```shell
-brew update
-brew install localsend-cli
+```properties
+storeFile=C:/Users/<使用者>/.android/debug.keystore
+storePassword=android
+keyAlias=androiddebugkey
+keyPassword=android
 ```
 
-To upgrade an existing installation:
+沒有這個檔案,release 版會產生無法安裝的未簽名 APK。
 
-```shell
-brew update
-brew upgrade localsend-cli
-```
-
-Run `localsend-cli --help` to see every available option and hotkey.
-
-Use the `send` command with one or more files, directories, or a mixture of both:
-
-```shell
-localsend-cli send report.pdf photo.jpg ./project-backup
-```
-
-The command opens the discovered-device list; select the destination interactively
-and press Enter to start the transfer.
-
-To select the destination without an interactive device list, pass its exact alias
-or IP address:
-
-```shell
-localsend-cli send --to "Cute Tomato" report.pdf
-localsend-cli send --to 192.168.27.26 report.pdf
-```
-
-An alias must uniquely identify a discovered device. An IP address is probed directly
-over HTTPS on LocalSend's default port (`53317`).
-
-To send a text message instead of files, use `--text` together with `--to`.
-Pass `-` to read the text from stdin:
-
-```shell
-localsend-cli send --to "Cute Tomato" --text "https://localsend.org"
-echo "Hello" | localsend-cli send --to "Cute Tomato" --text -
-```
-
-A single trailing line break is dropped from stdin. Text longer than 64 KB is sent as
-a `.txt` file instead. Stdin must be UTF-8 and at most 16 MB; send other data as a file.
-
-Directories are collected recursively. Their selected root names and nested paths
-are preserved on the receiver. Empty directories are not sent because LocalSend
-transfers file entries rather than directory entries.
-
-## Contributing
-
-We welcome contributions from anyone interested in helping improve LocalSend. If you'd like to contribute, there are a few ways to get involved:
-
-### Translation
-
-You can help translate LocalSend into other languages. We use the [Weblate](https://hosted.weblate.org/projects/localsend/app) platform to manage translations.
-
-Alternatively, you can also contribute by forking this repository and adding translations manually.
-
-The translations are located in the [app/assets/i18n](https://github.com/localsend/localsend/tree/main/app/assets/i18n) directory. Edit the `_missing_translations_<locale>.json` or `strings_<locale>.i18n.json` file to add or update translations.
-
-<a href="https://hosted.weblate.org/engage/localsend/">
-<img src="https://hosted.weblate.org/widget/localsend/app/multi-auto.svg" alt="Translation status" />
-</a>
-
-**_Take note:_ Fields decorated with `@` are not meant to be translated; they are not used in the app in any way, being merely informative text about the file or to give context to the translator.**
-
-### Bug Fixes and Improvements
-
-- **Bug Fixes:** If you find a bug, please create a pull request with a clear description of the issue and how to fix it.
-- **Improvements:** Have an idea for how to improve LocalSend? Please create an issue first to discuss why the improvement is needed.
-
-For more information, see the [contributing guide](https://github.com/localsend/localsend/blob/main/CONTRIBUTING.md).
-
-## Troubleshooting
-
-| Issue              | Platform (Sending) | Platform (Receiving) | Solution                                                                                                                                |
-|--------------------|--------------------|----------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| Device not visible | Any                | Any                  | Make sure to disable AP-Isolation on your router. If it is enabled, connections between devices are forbidden.                          |
-| Device not visible | Any                | Windows              | Make sure to configure your network as a "private" network. Windows might be more restrictive when the network is configured as public. |
-| Device not visible | macOS, iOS         | Any                  | You can try to toggle the "Local Network" permission under "Privacy" in the OS settings.                                                |
-| Device not visible | Any                | Any                  | If a VPN is active, allow local/LAN traffic or temporarily disable the VPN. Some VPNs block local network connections by default.       |
-| Device not visible | Any                | Any                  | Use manual sending to enter the receiver's IP address directly. If that works, add the device to favorites so it is probed directly.    |
-| Speed too slow     | Any                | Any                  | Use 5 Ghz; Disable encryption on both devices                                                                                           |
-| Speed too slow     | Any                | Android              | Known issue. https://github.com/flutter-cavalry/saf_stream/issues/4                                                                     |
-
-## Building
-
-These commands are intended for maintainers only. Make sure to run them from the `app` directory.
-
-### Android
-
-Traditional APK
+### 編譯步驟(Git Bash)
 
 ```bash
-flutter build apk
+export PATH="/c/flutter/bin:$HOME/.cargo/bin:$PATH"
+export ANDROID_HOME="C:/Users/<使用者>/AppData/Local/Android/Sdk"
+cd app
+flutter pub get
+dart run build_runner build -d
+dart run slang
+# 不開 Windows「開發人員模式」也能編:編譯期間暫時把桌面版資料夾改名
+mv windows _windows_off && mv linux _linux_off
+flutter build apk --release --no-pub --android-skip-build-dependency-validation --target-platform android-arm,android-arm64
+mv _windows_off windows && mv _linux_off linux
 ```
 
-AppBundle for Google Play
+產出:`app/build/app/outputs/flutter-apk/app-release.apk`(約 80MB)。第一次要編 Rust,大約需要 15 到 20 分鐘。
+
+兩個特殊處理的原因:
+
+- **桌面版資料夾改名**:Flutter 在 Windows 上處理外掛時要建立符號連結,必須開「開發人員模式」。
+  只編 Android 版用不到 `windows/`、`linux/`,暫時改名就能避開。編譯中途失敗的話,記得把名稱改回來。
+- **`--android-skip-build-dependency-validation`**:專案的 Gradle 是 8.13,Flutter 要求至少 8.14。
+  這個差距不影響實際建置,所以跳過檢查。
+
+## 測試
+
+### 手錶 App 版面
+
+`app/test/watch/` 會把 82 個畫面情境渲染成手錶與手機兩種尺寸的截圖,並檢查內容溢出:
 
 ```bash
-flutter build appbundle
+cd app
+# 手錶尺寸(326x400),有任何溢出就判定失敗
+/c/flutter/bin/flutter test --no-pub test/watch/watch_screens_test.dart --dart-define=WATCH_STRICT=true
+# 手機尺寸(412x915),和 test/watch/goldens_phone/ 的截圖比對
+/c/flutter/bin/flutter test --no-pub test/watch/watch_screens_test.dart --dart-define=WATCH_SIZE=phone
+# 全部測試
+/c/flutter/bin/flutter test --no-pub
 ```
 
-### iOS
+修改版面後要更新截圖,加上 `--update-goldens`。
+
+### 網頁版電腦端
+
+互通測試是用本倉庫 `cli/` 編出的官方 Rust `localsend-cli` 和 web-peer 互傳,比對 SHA-256。
+做法與指令記錄在 [web-peer/PROTOCOL.md](web-peer/PROTOCOL.md) 與 web-peer 的提交說明中。
+
+## 同步官方新版
 
 ```bash
-flutter build ipa
+git fetch upstream          # upstream 只追蹤官方的 main
+git merge upstream/main     # 直接合併進 main,不開分支
 ```
 
-### macOS
+合併後:
 
-```bash
-flutter build macos
-```
+1. 如果官方又加回 `.github/dependabot.yml`,把它刪掉。
+2. 重跑上面的手錶版面測試與全部測試。
+3. 重新編譯 APK,在手錶上實測一次。
 
-### Windows
+## 已知限制
 
-**Traditional**
+- 進度頁的浮動狀態卡會蓋住最後一個檔案的狀態,往上捲就看得到。
+- 「本機網路權限」面板空間較小,內容要在面板內捲動(這個面板在 Android 9 上不會出現)。
+- APK 用 debug 金鑰簽名,和官方版簽名不同,不能直接覆蓋安裝官方版。
+- 網頁版電腦端只在單一台電腦和單一個 Wi-Fi 環境測過;有些路由器或手機熱點會擋多播,這時要用網頁上的「重新掃描」逐一詢問網段。
+- 手機熱點如果會隔離連線裝置,電腦和手錶之間就無法互傳(手機和手錶之間不受影響)。
 
-```bash
-flutter build windows
-```
+## 授權
 
-**Local MSIX App**
-
-```bash
-flutter pub run msix:create
-```
-
-**Store ready**
-
-```bash
-flutter pub run msix:create --store
-```
-
-### Linux
-
-**Traditional**
-
-```bash
-flutter build linux
-```
-
-**AppImage**
-
-```bash
-appimage-builder --recipe AppImageBuilder.yml
-```
-
-**Snap**
-
-Instructions in [localsend/snap/README.md](https://github.com/localsend/snap/blob/main/README.md)
-
-## Contributors
-
-<a href="https://github.com/localsend/localsend/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=localsend/localsend"  alt="Localsend Contributors"/>
-</a>
+本倉庫沿用 LocalSend 的 [Apache License 2.0](LICENSE)。原作者與貢獻者為 LocalSend 團隊,
+官方專案位於 <https://github.com/localsend/localsend>。本倉庫的修改內容列在上方「和官方版的差異」一節。
