@@ -117,3 +117,35 @@ Future<int> openFileForWritingAndroid({required String uri}) async {
   }
   return fileDescriptor;
 }
+
+/// Opens an existing document to continue an interrupted transfer: read +
+/// write without truncation ("rw", the only mode guaranteed to be seekable).
+///
+/// Throws a [PlatformException] (code `OPEN_FAILED`) when the provider cannot
+/// open the document this way. The descriptor stays open after this call and
+/// must be closed by the native consumer it is passed to.
+Future<int> openFileForResumeAndroid({required String uri}) async {
+  final fileDescriptor = await _methodChannel.invokeMethod<int>('openFileForResume', {
+    'uri': uri,
+  });
+  if (fileDescriptor == null) {
+    throw StateError('Android returned no file descriptor for $uri');
+  }
+  return fileDescriptor;
+}
+
+/// Renames a document. Returns the URI of the renamed document (a provider may
+/// change it), or `null` when the provider does not support renaming.
+Future<String?> renameDocumentAndroid({required String uri, required String displayName}) async {
+  return _methodChannel.invokeMethod<String>('renameDocument', {
+    'uri': uri,
+    'displayName': displayName,
+  });
+}
+
+/// Deletes a document, e.g. an expired partial file.
+Future<void> deleteDocumentAndroid({required String uri}) async {
+  await _methodChannel.invokeMethod<bool>('deleteDocument', {
+    'uri': uri,
+  });
+}

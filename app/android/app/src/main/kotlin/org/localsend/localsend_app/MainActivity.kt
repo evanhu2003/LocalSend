@@ -106,6 +106,12 @@ class MainActivity : FlutterActivity() {
 
                 "openFileForWriting" -> handleOpenFileForWriting(call, result)
 
+                "openFileForResume" -> handleOpenFileForResume(call, result)
+
+                "renameDocument" -> handleRenameDocument(call, result)
+
+                "deleteDocument" -> handleDeleteDocument(call, result)
+
                 "scanFile" -> handleScanFile(call, result)
 
                 "openContentUri" -> {
@@ -322,6 +328,85 @@ class MainActivity : FlutterActivity() {
             result.error("PERMISSION_DENIED", e.message ?: "Permission denied for content URI", null)
         } catch (e: Exception) {
             result.error("OPEN_FAILED", e.message ?: "Failed to open content URI", null)
+        }
+    }
+
+    /// Parses the "uri" argument as a content URI, or reports an error and returns null.
+    private fun contentUriArgument(call: MethodCall, result: MethodChannel.Result): Uri? {
+        val uriString = call.argument<String>("uri")
+        if (uriString == null) {
+            result.error("INVALID_ARGUMENT", "Missing content URI", null)
+            return null
+        }
+        val uri = Uri.parse(uriString)
+        if (uri.scheme != ContentResolver.SCHEME_CONTENT) {
+            result.error("INVALID_ARGUMENT", "Expected a content:// URI", null)
+            return null
+        }
+        return uri
+    }
+
+    /// Opens an existing document to continue an interrupted transfer:
+    /// read + write without truncation. Unlike "w" or "wa", the "rw" mode is
+    /// guaranteed to return a seekable file, so the writer can cut it to the
+    /// received length and continue there.
+    ///
+    /// Returns an owned file descriptor. It stays open after this call and
+    /// must be closed by the native consumer it is passed to.
+    private fun handleOpenFileForResume(call: MethodCall, result: MethodChannel.Result) {
+        val uri = contentUriArgument(call, result) ?: return
+        try {
+            val parcelFileDescriptor = contentResolver.openFileDescriptor(uri, "rw")
+            if (parcelFileDescriptor == null) {
+                result.error("OPEN_FAILED", "The content provider did not return a file descriptor", null)
+                return
+            }
+
+            parcelFileDescriptor.use {
+                result.success(it.detachFd())
+            }
+        } catch (e: SecurityException) {
+            result.error("PERMISSION_DENIED", e.message ?: "Permission denied for content URI", null)
+        } catch (e: Exception) {
+            result.error("OPEN_FAILED", e.message ?: "Failed to open content URI", null)
+        }
+    }
+
+    /// Renames a document, e.g. a completely received file from its hidden
+    /// temporary name to its final name.
+    ///
+    /// Returns the URI of the renamed document (a provider may change it), or
+    /// null when the provider does not support renaming.
+    private fun handleRenameDocument(call: MethodCall, result: MethodChannel.Result) {
+        val uri = contentUriArgument(call, result) ?: return
+        val displayName = call.argument<String>("displayName")
+        if (displayName == null) {
+            result.error("INVALID_ARGUMENT", "Missing display name", null)
+            return
+        }
+        try {
+            val renamed = DocumentsContract.renameDocument(contentResolver, uri, displayName)
+            result.success(renamed?.toString())
+        } catch (e: UnsupportedOperationException) {
+            result.success(null)
+        } catch (e: SecurityException) {
+            result.error("PERMISSION_DENIED", e.message ?: "Permission denied for content URI", null)
+        } catch (e: Exception) {
+            result.error("RENAME_FAILED", e.message ?: "Failed to rename document", null)
+        }
+    }
+
+    /// Deletes a document, e.g. an expired partial file. Returns whether it was deleted.
+    private fun handleDeleteDocument(call: MethodCall, result: MethodChannel.Result) {
+        val uri = contentUriArgument(call, result) ?: return
+        try {
+            result.success(DocumentsContract.deleteDocument(contentResolver, uri))
+        } catch (e: java.io.FileNotFoundException) {
+            result.success(false)
+        } catch (e: SecurityException) {
+            result.error("PERMISSION_DENIED", e.message ?: "Permission denied for content URI", null)
+        } catch (e: Exception) {
+            result.error("DELETE_FAILED", e.message ?: "Failed to delete document", null)
         }
     }
 
