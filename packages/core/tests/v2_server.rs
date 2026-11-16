@@ -839,6 +839,7 @@ async fn test_upload_of_unreadable_file_fails_instead_of_sending_an_empty_body()
             "file-a",
             &response.files["file-a"],
             FileContent::Path(missing),
+            0,
             |_| {},
             CancellationToken::new(),
         )

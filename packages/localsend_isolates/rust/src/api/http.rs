@@ -142,6 +142,7 @@ impl RsHttpClient {
                     file_id,
                     token,
                     content,
+                    0,
                     progress,
                     cancel_token.inner.clone(),
                 )

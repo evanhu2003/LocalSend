@@ -52,17 +52,37 @@ impl FileContent {
     /// the peer would store a truncated (or empty) file and the transfer would
     /// look successful on this side.
     pub fn into_stream(self) -> FileStream {
+        self.into_stream_from(0)
+    }
+
+    /// Like [`FileContent::into_stream`], but starting `offset` bytes into
+    /// the file, for resuming an upload the receiver already holds a part of.
+    ///
+    /// Files are positioned by seeking. A descriptor that cannot seek (e.g. a
+    /// pipe) and a [`FileContent::Stream`] skip the first `offset` bytes
+    /// instead.
+    pub fn into_stream_from(self, offset: u64) -> FileStream {
         match self {
             FileContent::Stream(rx) => {
                 tracing::info!("Reading file content via byte stream from application");
-                Box::pin(ReceiverStream::new(rx).map(Ok))
+                let stream = ReceiverStream::new(rx).map(Ok);
+                match offset {
+                    0 => Box::pin(stream),
+                    _ => Box::pin(skip_bytes(stream, offset)),
+                }
             }
             FileContent::Path(path) => {
-                tracing::info!("Reading file content from path: {}", path.display());
+                tracing::info!("Reading file content from path: {} (offset {offset})", path.display());
                 let (tx, rx) = mpsc::channel(FILE_CHANNEL_CAPACITY);
                 tokio::spawn(async move {
                     match tokio::fs::File::open(&path).await {
-                        Ok(file) => read_file_into_sender(file, tx).await,
+                        Ok(mut file) => {
+                            if let Err(e) = position(&mut file, offset).await {
+                                let _ = tx.send(Err(e)).await;
+                                return;
+                            }
+                            read_file_into_sender(file, tx).await
+                        }
                         Err(e) => {
                             tracing::error!("Failed to open {}: {e}", path.display());
                             // Re-wrapped with the path: this message is what the
@@ -83,17 +103,74 @@ impl FileContent {
             FileContent::Fd(fd) => {
                 use std::os::fd::FromRawFd;
 
-                tracing::info!("Reading file content from file descriptor: {fd}");
+                tracing::info!("Reading file content from file descriptor: {fd} (offset {offset})");
                 let (tx, rx) = mpsc::channel(FILE_CHANNEL_CAPACITY);
                 // SAFETY: the descriptor is owned by this transfer; wrapping it in
                 // a File transfers that ownership so it is closed once reading finishes.
                 let std_file = unsafe { std::fs::File::from_raw_fd(fd) };
-                let file = tokio::fs::File::from_std(std_file);
-                tokio::spawn(read_file_into_sender(file, tx));
+                let mut file = tokio::fs::File::from_std(std_file);
+                tokio::spawn(async move {
+                    if let Err(e) = position(&mut file, offset).await {
+                        let _ = tx.send(Err(e)).await;
+                        return;
+                    }
+                    read_file_into_sender(file, tx).await
+                });
                 Box::pin(ReceiverStream::new(rx))
             }
         }
     }
+}
+
+/// Moves `file` to `offset`: by seeking, or by reading and discarding the
+/// first `offset` bytes when the file cannot seek.
+async fn position(file: &mut tokio::fs::File, offset: u64) -> std::io::Result<()> {
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
+    if offset == 0 {
+        return Ok(());
+    }
+    if file.seek(std::io::SeekFrom::Start(offset)).await.is_ok() {
+        return Ok(());
+    }
+    let mut remaining = offset;
+    let mut buffer = vec![0u8; READ_BUFFER_SIZE];
+    while remaining > 0 {
+        let want = remaining.min(buffer.len() as u64) as usize;
+        let read = file.read(&mut buffer[..want]).await?;
+        if read == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                format!("The file is shorter than the resume offset {offset}"),
+            ));
+        }
+        remaining -= read as u64;
+    }
+    Ok(())
+}
+
+/// Drops the first `skip` bytes of `stream`.
+fn skip_bytes(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + Sync + 'static,
+    skip: u64,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + Sync + 'static {
+    let mut remaining = skip;
+    stream.filter_map(move |item| {
+        let item = match item {
+            Ok(mut chunk) if remaining > 0 => {
+                if remaining >= chunk.len() as u64 {
+                    remaining -= chunk.len() as u64;
+                    None
+                } else {
+                    let rest = chunk.split_off(remaining as usize);
+                    remaining = 0;
+                    Some(Ok(rest))
+                }
+            }
+            other => Some(other),
+        };
+        std::future::ready(item)
+    })
 }
 
 /// Reads `file` to EOF, forwarding chunks on `tx`.
@@ -313,6 +390,41 @@ mod tests {
 
         assert_eq!(chunks.len(), 1);
         assert!(chunks[0].is_err());
+    }
+
+    async fn collect_bytes(stream: FileStream) -> Vec<u8> {
+        let chunks: Vec<_> = stream.collect().await;
+        let mut content = Vec::new();
+        for chunk in chunks {
+            content.extend_from_slice(&chunk.unwrap());
+        }
+        content
+    }
+
+    /// A resumed upload sends the file from the offset on.
+    #[tokio::test]
+    async fn test_into_stream_from_path_skips_prefix() {
+        let path = std::env::temp_dir().join(format!("localsend-offset-{}", uuid::Uuid::new_v4()));
+        std::fs::write(&path, b"abcdef").unwrap();
+
+        let rest = collect_bytes(FileContent::Path(path.clone()).into_stream_from(2)).await;
+        let nothing = collect_bytes(FileContent::Path(path.clone()).into_stream_from(6)).await;
+        std::fs::remove_file(&path).unwrap();
+
+        assert_eq!(rest, b"cdef");
+        assert_eq!(nothing, b"");
+    }
+
+    #[tokio::test]
+    async fn test_into_stream_from_stream_skips_prefix() {
+        let (tx, rx) = mpsc::channel(4);
+        tx.send(Bytes::from_static(b"ab")).await.unwrap();
+        tx.send(Bytes::from_static(b"cdef")).await.unwrap();
+        drop(tx);
+
+        let rest = collect_bytes(FileContent::Stream(rx).into_stream_from(3)).await;
+
+        assert_eq!(rest, b"def");
     }
 
     /// The happy path still yields the file content and then ends.

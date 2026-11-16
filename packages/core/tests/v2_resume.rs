@@ -5,7 +5,7 @@
 //! durably written, instead of starting over.
 
 use bytes::Bytes;
-use localsend::http::client::{ClientError, LsHttpClientV2};
+use localsend::http::client::{ClientError, LsHttpClient, LsHttpClientV2, LsHttpClientVersion};
 use localsend::http::dto_v2::{
     PrepareUploadRequestDtoV2, PrepareUploadResponseDtoV2, RegisterDtoV2, RESUME_SUPPORT_VERSION,
 };
@@ -17,7 +17,7 @@ use localsend::http::server::{
 };
 use localsend::http::state::ClientInfo;
 use localsend::model::discovery::ProtocolType;
-use localsend::model::transfer::FileDto;
+use localsend::model::transfer::{FileContent, FileDto};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -1112,4 +1112,77 @@ async fn test_reset_v2_file() {
         .await
         .unwrap();
     assert_eq!(offset, 0);
+}
+
+/// The protocol-independent client resumes from a file on disk: it skips the
+/// part the receiver holds and reports progress as absolute positions.
+#[tokio::test]
+async fn test_client_resumes_after_interruption() {
+    let receiver = generate_identity();
+    let sender = generate_identity();
+    let mut server = start_server(Some(&receiver)).await;
+    let data = content(256 * 1024);
+    let source = server.dir.join("source.bin");
+    std::fs::write(&source, &data).unwrap();
+    let response = prepare_resumable(
+        &client(&sender, &server),
+        &mut server,
+        &sender,
+        &[file_with_content("a", &data)],
+        &[],
+    )
+    .await;
+    let token = response.files["a"].clone();
+    upload_interrupted(
+        client(&sender, &server),
+        &server,
+        &response.session_id,
+        "a",
+        &token,
+        0,
+        &data,
+        128 * 1024,
+    )
+    .await;
+    wait_interrupted(&mut server, "a").await;
+
+    let client = LsHttpClient::new(
+        &sender.private_key,
+        &sender.cert,
+        LsHttpClientVersion::V2,
+        server.fingerprint.clone(),
+        None,
+    )
+    .unwrap();
+    let offset = client
+        .upload_offset(server.protocol, "127.0.0.1", server.port, None, &response.session_id, "a", &token)
+        .await
+        .expect("upload-offset failed");
+    assert!(offset > 0);
+
+    let progress = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u64>::new()));
+    client
+        .upload(
+            server.protocol,
+            "127.0.0.1",
+            server.port,
+            None,
+            &response.session_id,
+            "a",
+            &token,
+            FileContent::Path(source),
+            offset,
+            {
+                let progress = progress.clone();
+                move |sent| progress.lock().unwrap().push(sent)
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .expect("resumed upload failed");
+
+    assert_eq!(std::fs::read(server.dir.join("a")).unwrap(), data);
+    let progress = progress.lock().unwrap();
+    assert!(progress[0] > offset, "first progress {} for offset {offset}", progress[0]);
+    assert_eq!(*progress.last().unwrap(), data.len() as u64);
 }

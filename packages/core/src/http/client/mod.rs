@@ -126,6 +126,12 @@ impl LsHttpClient {
         }
     }
 
+    /// Uploads a file, starting `offset` bytes into it.
+    ///
+    /// An `offset` above 0 resumes a file the receiver already holds a part
+    /// of; only use it when the receiver announced `resumeSupport` (protocol
+    /// v2 only). `progress` receives absolute positions in the file.
+    #[allow(clippy::too_many_arguments)]
     pub async fn upload(
         &self,
         protocol: model::discovery::ProtocolType,
@@ -136,25 +142,58 @@ impl LsHttpClient {
         file_id: &str,
         token: &str,
         content: model::transfer::FileContent,
+        offset: u64,
         progress: impl Fn(u64) + Send + 'static,
         cancel: tokio_util::sync::CancellationToken,
     ) -> Result<(), ClientError> {
-        let body = upload_body(content, progress);
         match self {
             LsHttpClient::V2(client) => {
+                let body = upload_body(content, offset, progress);
                 client
-                    .upload(
-                        protocol, ip, port, public_key, session_id, file_id, token, body, cancel,
+                    .upload_from_offset(
+                        protocol, ip, port, public_key, session_id, file_id, token, offset, body,
+                        cancel,
                     )
                     .await
             }
             LsHttpClient::V3(client) => {
+                if offset != 0 {
+                    return Err(ClientError::Other(anyhow::anyhow!(
+                        "Resuming uploads is not supported by protocol v3"
+                    )));
+                }
+                let body = upload_body(content, 0, progress);
                 client
                     .upload(
                         protocol, ip, port, public_key, session_id, file_id, token, body, cancel,
                     )
                     .await
             }
+        }
+    }
+
+    /// The offset the receiver holds of a file of a resumable session, see
+    /// [LsHttpClientV2::upload_offset]. Protocol v2 only.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upload_offset(
+        &self,
+        protocol: model::discovery::ProtocolType,
+        ip: &str,
+        port: u16,
+        public_key: Option<String>,
+        session_id: &str,
+        file_id: &str,
+        token: &str,
+    ) -> Result<u64, ClientError> {
+        match self {
+            LsHttpClient::V2(client) => {
+                client
+                    .upload_offset(protocol, ip, port, public_key, session_id, file_id, token)
+                    .await
+            }
+            LsHttpClient::V3(_) => Err(ClientError::Other(anyhow::anyhow!(
+                "Resuming uploads is not supported by protocol v3"
+            ))),
         }
     }
 
@@ -178,12 +217,14 @@ impl LsHttpClient {
 /// An I/O error while reading the file fails the body, which aborts the
 /// request. Ending the body early instead would send a complete but truncated
 /// upload that the receiver stores as a short (often empty) file.
+/// The body carries the file from `offset` on; `progress` counts from there.
 pub(super) fn upload_body(
     content: model::transfer::FileContent,
+    offset: u64,
     progress: impl Fn(u64) + Send + 'static,
 ) -> reqwest::Body {
-    let mut sent = 0_u64;
-    let stream = content.into_stream().map(move |chunk| {
+    let mut sent = offset;
+    let stream = content.into_stream_from(offset).map(move |chunk| {
         let chunk = chunk?;
         sent += chunk.len() as u64;
         progress(sent);
