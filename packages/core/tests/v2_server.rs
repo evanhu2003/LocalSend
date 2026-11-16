@@ -188,6 +188,7 @@ fn prepare_upload_request(files: &[FileDto]) -> PrepareUploadRequestDtoV2 {
             .iter()
             .map(|file| (file.id.clone(), file.clone()))
             .collect(),
+        resume_support: None,
     }
 }
 

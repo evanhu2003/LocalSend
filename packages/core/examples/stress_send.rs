@@ -58,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
             download: false,
         },
         files,
+        resume_support: None,
     };
 
     let client = LsHttpClientV2::try_new_without_cert()?;

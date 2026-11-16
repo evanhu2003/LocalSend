@@ -1,6 +1,6 @@
 use crate::http::dto_v2::{
     InfoResponseDtoV2, PrepareUploadRequestDtoV2, PrepareUploadResponseDtoV2, RegisterDtoV2,
-    RegisterResponseDtoV2,
+    RegisterResponseDtoV2, RESUME_SUPPORT_VERSION,
 };
 use crate::http::server::common::collect_to_json::CollectToJson;
 use crate::http::server::common::error::AppError;
@@ -64,6 +64,12 @@ pub enum ServerEventV2 {
 
         /// The offered files, mapped by file ID.
         files: HashMap<String, FileDto>,
+
+        /// Whether the session will be resumable: the sender announced
+        /// `resumeSupport` and the connection is authenticated by a client
+        /// certificate. Only then are offsets of
+        /// [PrepareUploadDecisionV2::AcceptWithOffsets] applied.
+        resumable: bool,
 
         /// Channel to send the decision (accept all, a subset, or decline).
         decision_tx: oneshot::Sender<PrepareUploadDecisionV2>,
@@ -137,6 +143,15 @@ pub enum PrepareUploadDecisionV2 {
     /// Accept the given file IDs (a subset of the offered files).
     /// An empty set responds with 204 (no file transfer needed).
     Accept(HashSet<String>),
+
+    /// Like [PrepareUploadDecisionV2::Accept], additionally telling the sender
+    /// how many bytes of a file the application already holds (from an
+    /// earlier, interrupted transfer). Offsets are ignored unless the session
+    /// is resumable, and offsets beyond a file's size count as 0.
+    AcceptWithOffsets {
+        file_ids: HashSet<String>,
+        offsets: HashMap<String, u64>,
+    },
 
     /// Decline the request (403).
     Decline,
@@ -277,13 +292,22 @@ pub(crate) async fn prepare_upload(
     // Frees the slot again if this request is aborted before a session is created.
     let mut pending_guard = PendingSessionGuard::new(v2.clone(), session_id.clone());
 
+    // Resuming is bound to the sender's certificate; without TLS the claimed
+    // identity could be spoofed by anyone on the network.
+    let sender_cert_fingerprint = client_info.cert_fingerprint();
+    let resumable = sender_cert_fingerprint.is_some()
+        && payload
+            .resume_support
+            .is_some_and(|version| version >= RESUME_SUPPORT_VERSION);
+
     let (decision_tx, decision_rx) = oneshot::channel();
     let event = ServerEventV2::PrepareUpload {
         session_id: session_id.clone(),
         ip: client_info.ip,
         info: payload.info,
-        cert_fingerprint: client_info.cert_fingerprint(),
+        cert_fingerprint: sender_cert_fingerprint.clone(),
         files: payload.files.clone(),
+        resumable,
         decision_tx,
     };
     if v2.event_tx.send(event).await.is_err() {
@@ -305,7 +329,7 @@ pub(crate) async fn prepare_upload(
         }
     };
 
-    let accepted_ids = match decision {
+    let (accepted_ids, offsets) = match decision {
         PrepareUploadDecisionV2::Decline => {
             pending_guard.clear().await;
             return Err(AppError::Message(
@@ -313,7 +337,8 @@ pub(crate) async fn prepare_upload(
                 "Rejected".to_string(),
             ));
         }
-        PrepareUploadDecisionV2::Accept(ids) => ids,
+        PrepareUploadDecisionV2::Accept(ids) => (ids, HashMap::new()),
+        PrepareUploadDecisionV2::AcceptWithOffsets { file_ids, offsets } => (file_ids, offsets),
     };
 
     let files: HashMap<String, SessionFileV2> = payload
@@ -321,11 +346,20 @@ pub(crate) async fn prepare_upload(
         .into_iter()
         .filter(|(id, _)| accepted_ids.contains(id))
         .map(|(id, dto)| {
+            let committed = match resumable {
+                true => offsets
+                    .get(&id)
+                    .copied()
+                    .filter(|offset| *offset <= dto.size)
+                    .unwrap_or(0),
+                false => 0,
+            };
             let file = SessionFileV2 {
                 dto,
                 token: Uuid::new_v4().to_string(),
                 status: FileStatusV2::Pending,
                 attempts: 0,
+                committed,
             };
             (id, file)
         })
@@ -343,6 +377,11 @@ pub(crate) async fn prepare_upload(
         .iter()
         .map(|(id, file)| (id.clone(), file.token.clone()))
         .collect();
+    let resume_offsets: HashMap<String, u64> = files
+        .iter()
+        .filter(|(_, file)| file.committed > 0)
+        .map(|(id, file)| (id.clone(), file.committed))
+        .collect();
 
     {
         let mut slot = v2.session.lock().await;
@@ -350,6 +389,8 @@ pub(crate) async fn prepare_upload(
             session_id: session_id.clone(),
             sender_ip: client_info.ip,
             files,
+            resumable,
+            sender_cert_fingerprint,
         }));
     }
     pending_guard.disarm();
@@ -361,6 +402,8 @@ pub(crate) async fn prepare_upload(
         body: PrepareUploadResponseDtoV2 {
             session_id,
             files: tokens,
+            resume_support: resumable.then_some(RESUME_SUPPORT_VERSION),
+            resume_offsets,
         },
     }
     .into_response())

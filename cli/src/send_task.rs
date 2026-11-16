@@ -118,6 +118,7 @@ async fn send_inner(
     let payload = PrepareUploadRequestDtoV2 {
         info: identity.register_dto(),
         files: files.clone(),
+        resume_support: None,
     };
     let prepared = match client
         .prepare_upload(

@@ -35,6 +35,12 @@ pub(crate) struct UploadSessionV2 {
 
     /// The accepted files, mapped by file ID.
     pub(crate) files: HashMap<String, SessionFileV2>,
+
+    /// Whether both sides agreed to resumable uploads (TLS only).
+    pub(crate) resumable: bool,
+
+    /// The fingerprint of the sender's client certificate (TLS only).
+    pub(crate) sender_cert_fingerprint: Option<String>,
 }
 
 impl UploadSessionV2 {
@@ -58,6 +64,11 @@ pub(crate) struct SessionFileV2 {
     /// Limits how often a checksum mismatch resets the file to
     /// [FileStatusV2::Pending] for a retry.
     pub(crate) attempts: u8,
+
+    /// The number of bytes of this file the receiver holds durably, i.e. the
+    /// offset the next upload of this file must start at. Always 0 unless the
+    /// session is resumable.
+    pub(crate) committed: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

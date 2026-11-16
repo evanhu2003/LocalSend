@@ -102,6 +102,7 @@ impl From<PrepareUploadRequestDto> for PrepareUploadRequestDtoV2 {
         PrepareUploadRequestDtoV2 {
             info: v3.info.into(),
             files: v3.files,
+            resume_support: None,
         }
     }
 }

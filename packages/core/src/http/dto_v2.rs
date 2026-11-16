@@ -94,7 +94,18 @@ pub struct PrepareUploadRequestDtoV2 {
 
     /// Map of file ID to file metadata.
     pub files: HashMap<String, FileDto>,
+
+    /// LocalSend fork extension: the version of resumable uploads the sender
+    /// supports ([RESUME_SUPPORT_VERSION]). Official peers omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_support: Option<u32>,
 }
+
+/// The version of the resumable upload extension implemented here.
+///
+/// Both sides announce it in prepare-upload (`resumeSupport`); only then do
+/// the `offset` upload parameter and the `upload-offset` endpoint apply.
+pub const RESUME_SUPPORT_VERSION: u32 = 1;
 
 /// Prepare upload response DTO for v2.2 protocol.
 ///
@@ -108,6 +119,16 @@ pub struct PrepareUploadResponseDtoV2 {
     /// Map of file ID to file token.
     /// Only contains files that were accepted by the receiver.
     pub files: HashMap<String, String>,
+
+    /// LocalSend fork extension: present when the receiver agreed to
+    /// resumable uploads for this session ([RESUME_SUPPORT_VERSION]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_support: Option<u32>,
+
+    /// LocalSend fork extension: the number of bytes the receiver already
+    /// holds per file ID. Only files with a non-zero offset are listed.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub resume_offsets: HashMap<String, u64>,
 }
 
 pub struct PrepareUploadResultV2 {
@@ -248,6 +269,7 @@ mod tests {
                     metadata: None,
                 },
             )]),
+            resume_support: None,
         };
 
         let json = serde_json::to_string(&request).unwrap();
