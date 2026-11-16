@@ -18,6 +18,11 @@ export class AppState extends EventEmitter {
     this.messages = [];
     /** 是否正在掃描網段 */
     this.scanning = false;
+    /** Tailscale 探索狀態（discovery.js 更新）;null = 尚未檢查 */
+    this.tailscale = config.tailscaleIntervalSec > 0 ? null : { enabled: false, available: false, installed: false, online: 0, reason: null };
+    /** tailnet 上所有裝置的 IP（小寫）：用來判斷裝置是不是走 Tailscale。
+     *  不用 100.64.0.0/10 判斷：有些電信業者 / 路由器的區網也用這個網段 */
+    this.tailnetIps = new Set();
     this._timer = null;
   }
 
@@ -43,6 +48,10 @@ export class AppState extends EventEmitter {
     return { device: next, isNew: !prev };
   }
 
+  isTailnet(ip) {
+    return this.tailnetIps.has(String(ip ?? '').toLowerCase());
+  }
+
   /** 狀態有變：合併 120ms 內的多次變更再推送 */
   changed() {
     if (this._timer) return;
@@ -65,11 +74,13 @@ export class AppState extends EventEmitter {
     return {
       self: { alias: this.config.alias, fingerprint: this.identity.fingerprint, port: this.config.port, receiveDir: this.config.receiveDirAbs },
       scanning: this.scanning,
+      tailscale: this.tailscale,
       devices: [...this.devices.values()]
         .sort((a, b) => a.alias.localeCompare(b.alias))
         .map((d) => ({
           fingerprint: d.fingerprint, alias: d.alias, ip: d.ip, port: d.port, protocol: d.protocol,
           deviceModel: d.deviceModel ?? null, deviceType: d.deviceType ?? null, lastSeen: d.lastSeen,
+          tailscale: this.isTailnet(d.ip),
         })),
       incoming: this.incoming && {
         id: this.incoming.id,

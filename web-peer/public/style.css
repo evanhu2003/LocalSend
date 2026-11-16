@@ -105,6 +105,8 @@ textarea { resize: vertical; }
 .device .icon { font-size: 1.5rem; width: 32px; text-align: center; }
 .device .name { font-weight: 600; }
 .device .meta { color: var(--muted); font-size: .8rem; }
+.tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: .7rem; font-weight: 500; vertical-align: 1px; background: var(--accent-weak); color: var(--accent); }
+.ts-status { margin: 10px 0 0; }
 
 .tabs { display: flex; gap: 4px; background: var(--bg); padding: 3px; border-radius: 8px; }
 .tab { font: inherit; font-size: .85rem; border: 0; background: transparent; color: var(--muted); padding: 4px 12px; border-radius: 6px; cursor: pointer; }

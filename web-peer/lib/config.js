@@ -25,6 +25,8 @@ export function loadConfig(baseDir) {
     acceptTimeoutSec: 120,
     // 週期性多播宣告間隔（秒）,0 = 關閉
     announceIntervalSec: 60,
+    // Tailscale 探索間隔（秒）：定期對 tailnet 上在線的裝置送 register,0 = 關閉
+    tailscaleIntervalSec: 30,
   };
 
   const cfg = { ...defaults, ...saved };
@@ -44,6 +46,7 @@ export function loadConfig(baseDir) {
         uiPort: cfg.uiPort,
         acceptTimeoutSec: config.acceptTimeoutSec,
         announceIntervalSec: config.announceIntervalSec,
+        tailscaleIntervalSec: config.tailscaleIntervalSec,
       };
       fs.writeFileSync(file, JSON.stringify(out, null, 2) + '\n');
     },

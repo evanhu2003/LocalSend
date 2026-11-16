@@ -12,7 +12,7 @@
 
 - Windows 10 / 11
 - [Node.js](https://nodejs.org/) 18 以上（建議安裝 LTS 版）
-- 電腦和手錶連在**同一個 Wi-Fi**
+- 電腦和手錶連在**同一個 Wi-Fi**，或都登入同一個 Tailscale 帳號（見「透過 Tailscale 使用」）
 
 ## 啟動
 
@@ -73,6 +73,26 @@ New-NetFirewallRule -DisplayName "LocalSend web-peer UDP" -Direction Inbound -Pr
 
 > 同一時間只能有一個傳入的傳輸，傳輸期間其他裝置要傳檔會收到「對方忙碌」。
 
+## 透過 Tailscale 使用（不在同一個 Wi-Fi 也能互傳）
+
+電腦和手錶不在同一個網路時（例如手錶用行動網路、或在不同的 Wi-Fi），可以透過 [Tailscale](https://tailscale.com/) 連線，**不需要手動輸入 IP**。
+
+1. **電腦**：安裝 Tailscale 並登入。web-peer 會自動找到 `tailscale` 指令（`C:\Program Files\Tailscale\tailscale.exe` 或 PATH）。
+2. **手錶**：從 F-Droid 安裝 Tailscale（需要 **Android 8 以上**），並用**和電腦相同的帳號**登入，保持連線。
+3. 兩邊都連上後，網頁「附近的裝置」下方會顯示「已連上 Tailscale：同帳號有 N 台裝置在線上」。
+4. 在手錶上打開 LocalSend。tailnet 沒有多播，所以由**電腦主動探索**：每 30 秒詢問一次和電腦**同一個帳號**、在線上的 tailnet 裝置（連接埠 53317；同一個 tailnet 裡其他人的裝置、分享進來的裝置不會被詢問），按「重新掃描」可以立刻再找一次。
+   找到後，手錶會出現在「附近的裝置」並標上「Tailscale」，同時手錶的 LocalSend 也會看到這台電腦。
+5. 傳檔方式和同一個 Wi-Fi 時完全相同，傳送會走手錶的 Tailscale IP（`100.x.x.x`）。
+   如果同一台手錶也在區網上找得到，會優先使用區網 IP（速度較快）；區網連不上時才自動改走 Tailscale。
+
+注意事項：
+
+- **防火牆**：Windows 會把 Tailscale 網卡當成獨立的網路（通常是「公用網路」或「私人網路」），必須在**該網路設定檔**放行 TCP 53317 的輸入連線，否則手錶無法傳檔給電腦。上方「Windows 防火牆」一節的 PowerShell 指令（`-Profile Any`）已涵蓋所有設定檔。
+- 沒有開著 LocalSend 的 tailnet 裝置不會寫入記錄，詢問間隔也會自動拉長（最多 2 分鐘一次）。
+- Tailscale 回報離線的裝置會立刻從「附近的裝置」移除。
+- 手錶的 Tailscale 在背景可能被系統暫停，找不到時先在手錶上打開 Tailscale 確認已連線，再按「重新掃描」。
+- **關閉 Tailscale 探索**：把 `data/config.json` 的 `tailscaleIntervalSec` 改成 `0` 後重新啟動；也可以改成其他秒數調整探索間隔。
+
 ## 檔案存在哪裡
 
 - 收到的檔案預設存在 `web-peer\received\`。網頁上的「開啟資料夾」按鈕會用檔案總管打開它，清單裡的檔名可以直接下載。
@@ -85,7 +105,7 @@ New-NetFirewallRule -DisplayName "LocalSend web-peer UDP" -Direction Inbound -Pr
 
 | 檔案 | 說明 |
 |---|---|
-| `config.json` | 裝置名稱、收件資料夾、接受逾時、宣告間隔等設定 |
+| `config.json` | 裝置名稱、收件資料夾、接受逾時、宣告間隔、Tailscale 探索間隔（`tailscaleIntervalSec`）等設定 |
 | `cert.pem` / `key.pem` | 這台電腦的自簽憑證與私鑰。**請勿刪除**，否則 fingerprint 會改變，手錶上的「我的最愛」會失效 |
 | `fingerprint.txt` | 憑證 fingerprint（手錶用它辨識這台電腦） |
 | `staging/` | 待傳送檔案的暫存區，每次啟動時清空 |
@@ -104,5 +124,6 @@ New-NetFirewallRule -DisplayName "LocalSend web-peer UDP" -Direction Inbound -Pr
 | 傳輸失敗、檔案不完整 | Wi-Fi 訊號不穩。重新傳一次即可；不完整的檔案不會留在收件資料夾 |
 | 網頁顯示「與本機服務中斷」 | 命令列視窗被關掉了，重新雙擊 `start.bat` |
 | 電腦有多張網卡（VPN、虛擬機） | 程式會在所有 IPv4 網卡上宣告；若仍有問題，暫時關閉 VPN 再試 |
+| 透過 Tailscale 找不到手錶 | 1. 確認兩邊 Tailscale 都用同一個帳號登入且在線上（網頁會顯示在線台數）。2. 手錶上 LocalSend 要開著。3. 防火牆要在 Tailscale 網路的設定檔放行 TCP 53317。4. 按「重新掃描」 |
 
 命令列視窗會顯示詳細記錄（探索、註冊、傳輸結果），回報問題時可以一併提供。

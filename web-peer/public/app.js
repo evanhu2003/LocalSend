@@ -100,11 +100,19 @@ function renderDevices() {
     },
     el('span', { class: 'icon', 'aria-hidden': 'true' }, deviceIcon(d.deviceType)),
     el('div', {},
-      el('div', { class: 'name' }, d.alias),
+      el('div', { class: 'name' }, d.alias, d.tailscale ? el('span', { class: 'tag', title: '透過 Tailscale 連線' }, 'Tailscale') : null),
       el('div', { class: 'meta' }, [d.deviceModel, `${d.ip}:${d.port}`, `#${d.fingerprint.slice(0, 6)}`].filter(Boolean).join(' · '))));
     ul.append(li);
   }
   $('noDevices').hidden = state.devices.length > 0;
+  const ts = state.tailscale;
+  const tsEl = $('tsStatus');
+  // 沒裝 Tailscale 的人不必看到這行；裝了但沒連上（未登入、已停止等）才顯示原因
+  tsEl.hidden = !ts || !ts.enabled || (!ts.available && !ts.installed);
+  if (ts && ts.enabled) {
+    tsEl.textContent = ts.available ? `已連上 Tailscale：同帳號有 ${ts.online} 台裝置在線上` : `未使用 Tailscale 探索：${ts.reason ?? '原因不明'}`;
+    tsEl.title = ts.available ? '會定期詢問這些裝置上有沒有開著 LocalSend' : '';
+  }
 }
 
 function renderSendState() {
