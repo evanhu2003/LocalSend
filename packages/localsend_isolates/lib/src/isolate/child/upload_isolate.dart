@@ -231,12 +231,25 @@ Future<void> setupHttpUploadIsolate(
             }
 
             if (file.resumable) {
+              bool isCancelled() => !ref.read(_cancelTokenProvider).containsKey(task.id);
               await uploadWithResume(
-                initialOffset: file.queryOffsetFirst ? await queryOffset() : file.offset,
+                fileSize: file.fileSize,
+                initialOffset: file.offset,
+                queryOffsetFirst: file.queryOffsetFirst,
                 queryOffset: queryOffset,
                 upload: uploadFrom,
-                isCancelled: () => !ref.read(_cancelTokenProvider).containsKey(task.id),
-                sleep: Future<void>.delayed,
+                isCancelled: isCancelled,
+                // Wakes up early when the user cancels, so no request follows.
+                sleep: (duration) async {
+                  final end = DateTime.now().add(duration);
+                  while (!isCancelled()) {
+                    final remaining = end.difference(DateTime.now());
+                    if (remaining <= Duration.zero) {
+                      break;
+                    }
+                    await Future<void>.delayed(remaining < const Duration(milliseconds: 250) ? remaining : const Duration(milliseconds: 250));
+                  }
+                },
                 now: DateTime.now,
                 onReconnecting: (attempt) {
                   sendToMain(

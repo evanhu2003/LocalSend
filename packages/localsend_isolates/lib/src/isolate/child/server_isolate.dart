@@ -432,6 +432,10 @@ class _PendingPrepare {
 class _ResumeState {
   PartialRegistry? registry;
   _PendingPrepare? pending;
+
+  /// One writer per partial file: a transfer that continues a partial file
+  /// waits until an older transfer's upload of it has ended.
+  final locks = PartialFileLocks();
 }
 
 final _resumeProvider = Provider((ref) => _ResumeState());
@@ -771,7 +775,14 @@ Future<Map<String, PartialMatch>> _findPartialFiles(PartialRegistry? registry, S
       if (sha256 == null) {
         continue;
       }
-      final match = await registry.match(senderFingerprint: senderFingerprint, sha256: sha256, size: file.size.toInt());
+      // A partial file is continued by one file only, even if the request
+      // contains the same content twice.
+      final match = await registry.match(
+        senderFingerprint: senderFingerprint,
+        sha256: sha256,
+        size: file.size.toInt(),
+        excluding: {for (final match in matches.values) match.entry.id},
+      );
       if (match != null && match.offset > 0) {
         matches[fileId] = match;
       }
@@ -800,6 +811,39 @@ Future<void> _handleFileUpload({
   required String fileId,
   required FileDto file,
   required int offset,
+  required void Function(HttpServerEvent event) emit,
+}) async {
+  // Every write to a partial file holds its lock: an upload of an older
+  // transfer (cancelled or superseded) may still be ending its writes when a
+  // new transfer continues the file.
+  final resumable = session.resumable && file.sha256 != null;
+  final newPartialId = const Uuid().v4();
+  final partialId = resumable ? session.entryIds[fileId] ?? (offset > 0 ? session.matches[fileId]?.entry.id : null) ?? newPartialId : null;
+  final release = partialId != null ? await ref.read(_resumeProvider).locks.acquire(partialId) : null;
+  try {
+    await _receiveFile(
+      ref: ref,
+      session: session,
+      sessionId: sessionId,
+      fileId: fileId,
+      file: file,
+      offset: offset,
+      newPartialId: newPartialId,
+      emit: emit,
+    );
+  } finally {
+    release?.call();
+  }
+}
+
+Future<void> _receiveFile({
+  required Ref ref,
+  required _ReceiveSession session,
+  required String sessionId,
+  required String fileId,
+  required FileDto file,
+  required int offset,
+  required String newPartialId,
   required void Function(HttpServerEvent event) emit,
 }) async {
   final config = session.config;
@@ -857,7 +901,7 @@ Future<void> _handleFileUpload({
       entryId = session.entryIds[fileId];
       target = await reopenFileSaveTarget(previous);
     } else {
-      final id = const Uuid().v4();
+      final id = newPartialId;
       entryId = id;
       target = await preparePartialSaveTarget(
         destinationDirectory: config.destinationDirectory,

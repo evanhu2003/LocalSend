@@ -140,6 +140,7 @@ async fn start_test_server(
         },
         None,
         Some(ServerConfigV2 {
+            resume_enabled: true,
             resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin: None,
             verify_checksums: true,
@@ -311,6 +312,7 @@ async fn test_upload_page() {
         },
         None,
         Some(ServerConfigV2 {
+            resume_enabled: true,
             resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin: None,
             verify_checksums: true,
@@ -367,6 +369,7 @@ async fn test_custom_web_pages() {
         },
         None,
         Some(ServerConfigV2 {
+            resume_enabled: true,
             resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin: None,
             verify_checksums: true,

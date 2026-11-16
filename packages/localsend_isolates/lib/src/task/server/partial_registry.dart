@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -155,11 +156,20 @@ class PartialRegistry {
   }
 
   /// The partial file of [sha256] and [size] received from [senderFingerprint].
+  /// Entries in [excluding] are already continued by another file.
   ///
   /// Entries whose partial file is gone are dropped.
-  Future<PartialMatch?> match({required String senderFingerprint, required String sha256, required int size}) async {
+  Future<PartialMatch?> match({
+    required String senderFingerprint,
+    required String sha256,
+    required int size,
+    Set<String> excluding = const {},
+  }) async {
     for (final entry in _entries.values.toList()) {
-      if (entry.senderFingerprint != senderFingerprint || entry.sha256.toLowerCase() != sha256.toLowerCase() || entry.size != size) {
+      if (excluding.contains(entry.id) ||
+          entry.senderFingerprint != senderFingerprint ||
+          entry.sha256.toLowerCase() != sha256.toLowerCase() ||
+          entry.size != size) {
         continue;
       }
       final length = await _lengthOf(entry);
@@ -268,4 +278,31 @@ Map<String, int> confirmResumeOffsets({
       if (match.offset > 0 && match.entry.destinationDirectory == destinationDirectory && match.entry.saveToGallery == saveToGallery)
         fileId: match.offset,
   };
+}
+
+/// Gives a partial file to one writer at a time: a new transfer that
+/// continues it waits until the upload of an older transfer is done with it.
+class PartialFileLocks {
+  final Map<String, Future<void>> _tails = {};
+
+  /// Waits for the previous holder of [id], then returns the function that
+  /// releases it.
+  Future<void Function()> acquire(String id) async {
+    final previous = _tails[id];
+    final released = Completer<void>();
+    final tail = released.future;
+    _tails[id] = tail;
+    if (previous != null) {
+      await previous;
+    }
+    return () {
+      if (!released.isCompleted) {
+        released.complete();
+      }
+      if (identical(_tails[id], tail)) {
+        // The removed future is the one just completed; nothing waits for it here.
+        _tails.remove(id)?.ignore();
+      }
+    };
+  }
 }

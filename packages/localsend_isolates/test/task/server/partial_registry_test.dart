@@ -167,4 +167,37 @@ void main() {
 
     expect(offsets, {'f1': 40});
   });
+
+  test('match skips partial files already taken by another file', () async {
+    final r = await registry();
+    await r.upsert(entry(id: 'only'));
+
+    final first = await r.match(senderFingerprint: 'SENDER', sha256: 'abc', size: 100);
+    final second = await r.match(senderFingerprint: 'SENDER', sha256: 'abc', size: 100, excluding: {first!.entry.id});
+
+    expect(second, isNull);
+  });
+
+  test('a partial file has one writer at a time', () async {
+    final locks = PartialFileLocks();
+    final events = <String>[];
+
+    final releaseOld = await locks.acquire('e1');
+    final waiting = locks.acquire('e1').then((release) {
+      events.add('new writer');
+      release();
+    });
+    final other = locks.acquire('e2').then((release) {
+      events.add('other file');
+      release();
+    });
+
+    await other;
+    await Future<void>.delayed(Duration.zero);
+    events.add('old writer done');
+    releaseOld();
+    await waiting;
+
+    expect(events, ['other file', 'old writer done', 'new writer']);
+  });
 }

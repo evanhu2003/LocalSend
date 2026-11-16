@@ -140,6 +140,7 @@ async fn start_test_server_with_verification(
         },
         None,
         Some(ServerConfigV2 {
+            resume_enabled: true,
             resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin,
             verify_checksums,
@@ -1044,6 +1045,7 @@ async fn test_prepare_upload_aborted_by_sender_disconnect() {
         },
         None,
         Some(ServerConfigV2 {
+            resume_enabled: true,
             resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin: None,
             verify_checksums: true,
@@ -1147,6 +1149,7 @@ async fn test_prepare_upload_cancelled_by_session_less_cancel() {
         },
         None,
         Some(ServerConfigV2 {
+            resume_enabled: true,
             resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin: None,
             verify_checksums: true,
@@ -1283,6 +1286,7 @@ async fn test_prepare_upload_aborted_by_sender_disconnect_tls() {
         },
         None,
         Some(ServerConfigV2 {
+            resume_enabled: true,
             resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin: None,
             verify_checksums: true,
@@ -1402,6 +1406,7 @@ async fn test_prepare_upload_normalizes_file_names_to_nfc() {
         },
         None,
         Some(ServerConfigV2 {
+            resume_enabled: true,
             resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin: None,
             verify_checksums: true,

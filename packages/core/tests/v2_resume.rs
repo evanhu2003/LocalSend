@@ -70,6 +70,15 @@ async fn start_server_with(
     verify_checksums: bool,
     resume_idle_timeout: Duration,
 ) -> TestServer {
+    start_server_full(identity, verify_checksums, resume_idle_timeout, true).await
+}
+
+async fn start_server_full(
+    identity: Option<&Identity>,
+    verify_checksums: bool,
+    resume_idle_timeout: Duration,
+    resume_enabled: bool,
+) -> TestServer {
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     let (event_tx, mut events) = mpsc::channel::<ServerEventV2>(64);
     let (prepares_tx, prepares) = mpsc::channel::<ServerEventV2>(64);
@@ -125,6 +134,7 @@ async fn start_server_with(
         Some(ServerConfigV2 {
             pin: None,
             verify_checksums,
+            resume_enabled,
             resume_idle_timeout,
             event_tx,
         }),
@@ -441,7 +451,10 @@ async fn test_resume_negotiated_over_tls() {
     let payload = request(
         &sender,
         &server,
-        &[file_dto("a", 20), file_dto("b", 5)],
+        &[
+            file_with_content("a", &content(20)),
+            file_with_content("b", &content(5)),
+        ],
         Some(RESUME_SUPPORT_VERSION),
     );
     let (response, resumable) = prepare_upload(&client, &mut server, payload, |files| {
@@ -482,6 +495,32 @@ async fn test_resume_not_negotiated_without_request_flag() {
 async fn test_resume_not_negotiated_over_http() {
     let sender = generate_identity();
     let mut server = start_server(None).await;
+    let client = client(&sender, &server);
+
+    let payload = request(
+        &sender,
+        &server,
+        &[file_dto("a", 20)],
+        Some(RESUME_SUPPORT_VERSION),
+    );
+    let (response, resumable) = prepare_upload(&client, &mut server, payload, |files| {
+        accept_with_offsets(files, &[("a", 10)])
+    })
+    .await;
+
+    assert!(!resumable);
+    assert_eq!(response.resume_support, None);
+    assert!(response.resume_offsets.is_empty());
+}
+
+/// A receiving application that cannot continue files (e.g. the CLI, which
+/// picks a new path for every upload) keeps the official behavior.
+#[tokio::test]
+async fn test_resume_not_negotiated_when_disabled() {
+    let receiver = generate_identity();
+    let sender = generate_identity();
+    let mut server =
+        start_server_full(Some(&receiver), true, DEFAULT_RESUME_IDLE_TIMEOUT, false).await;
     let client = client(&sender, &server);
 
     let payload = request(
@@ -1185,4 +1224,236 @@ async fn test_client_resumes_after_interruption() {
     let progress = progress.lock().unwrap();
     assert!(progress[0] > offset, "first progress {} for offset {offset}", progress[0]);
     assert_eq!(*progress.last().unwrap(), data.len() as u64);
+}
+
+/// A file without a checksum cannot be verified after appending, so it is
+/// never continued, even in a resumable session.
+#[tokio::test]
+async fn test_file_without_checksum_is_not_resumed() {
+    let receiver = generate_identity();
+    let sender = generate_identity();
+    let mut server = start_server(Some(&receiver)).await;
+    let data = content(256 * 1024);
+    std::fs::write(server.dir.join("a"), &data[..4]).unwrap();
+
+    let response = prepare_resumable(
+        &client(&sender, &server),
+        &mut server,
+        &sender,
+        &[file_dto("a", data.len() as u64)],
+        &[("a", 4)],
+    )
+    .await;
+    assert_eq!(response.resume_offsets.get("a"), None);
+
+    let token = response.files["a"].clone();
+    upload_interrupted(
+        client(&sender, &server),
+        &server,
+        &response.session_id,
+        "a",
+        &token,
+        0,
+        &data,
+        128 * 1024,
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    while let Ok(event) = server.notices.try_recv() {
+        assert!(
+            !matches!(event, ServerEventV2::FileInterrupted { .. }),
+            "a file without checksum must fail instead of being interrupted"
+        );
+    }
+    let result = client(&sender, &server)
+        .upload_offset(server.protocol, "127.0.0.1", server.port, None, &response.session_id, "a", &token)
+        .await;
+    assert_status(result, 403);
+}
+
+/// A new request of the same sender that does not continue anything (e.g. a
+/// text message while a large file waits for its reconnect) must not end the
+/// waiting session: it is busy, like for any other sender.
+#[tokio::test]
+async fn test_unrelated_request_from_same_sender_is_blocked() {
+    let receiver = generate_identity();
+    let sender = generate_identity();
+    let mut server = start_server(Some(&receiver)).await;
+    let data = content(256 * 1024);
+    let first = prepare_resumable(
+        &client(&sender, &server),
+        &mut server,
+        &sender,
+        &[file_with_content("a", &data)],
+        &[],
+    )
+    .await;
+    upload_interrupted(
+        client(&sender, &server),
+        &server,
+        &first.session_id,
+        "a",
+        &first.files["a"],
+        0,
+        &data,
+        128 * 1024,
+    )
+    .await;
+    let committed = wait_interrupted(&mut server, "a").await;
+
+    let other: Vec<u8> = content(1024).into_iter().rev().collect();
+    let client_b = client(&sender, &server);
+    let request_b =
+        request(&sender, &server, &[file_with_content("b", &other)], Some(RESUME_SUPPORT_VERSION));
+    let result = tokio::time::timeout(
+        Duration::from_secs(5),
+        client_b.prepare_upload(
+            server.protocol,
+            "127.0.0.1",
+            server.port,
+            None,
+            request_b,
+            None,
+            CancellationToken::new(),
+        ),
+    )
+    .await
+    .expect("the request must be answered right away (busy), not wait for a decision");
+    assert_status(result.map(|r| r.status_code), 409);
+
+    // The first session still waits for its file.
+    let offset = client(&sender, &server)
+        .upload_offset(server.protocol, "127.0.0.1", server.port, None, &first.session_id, "a", &first.files["a"])
+        .await
+        .expect("the first session must still exist");
+    assert_eq!(offset, committed);
+}
+
+/// Superseding a session whose upload is still running (the receiver did not
+/// notice the dead connection) first ends that upload, so its writer is done
+/// with the file before the new session continues it.
+#[tokio::test]
+async fn test_supersede_waits_for_running_upload() {
+    let receiver = generate_identity();
+    let sender = generate_identity();
+    let mut server = start_server(Some(&receiver)).await;
+    let data = content(256 * 1024);
+    let first = prepare_resumable(
+        &client(&sender, &server),
+        &mut server,
+        &sender,
+        &[file_with_content("a", &data)],
+        &[],
+    )
+    .await;
+    let (_cancel, _stale) = start_stalled_upload(
+        client(&sender, &server),
+        &server,
+        &first.session_id,
+        "a",
+        &first.files["a"],
+        0,
+        &data,
+        64 * 1024,
+    )
+    .await;
+
+    prepare_resumable(
+        &client(&sender, &server),
+        &mut server,
+        &sender,
+        &[file_with_content("a", &data)],
+        &[],
+    )
+    .await;
+
+    // The running upload was ended (and its progress recorded) before the
+    // first session made way for the new one.
+    let mut interrupted = false;
+    loop {
+        match next_notice(&mut server).await {
+            ServerEventV2::FileInterrupted { .. } => interrupted = true,
+            ServerEventV2::SessionEnd { reason, .. } => {
+                assert_eq!(reason, SessionEndReasonV2::Superseded);
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert!(interrupted, "the running upload must end before the session is superseded");
+}
+
+/// When a resumable session is cancelled, uploads still running are ended:
+/// their writers must not keep the partial file busy for a later transfer.
+#[tokio::test]
+async fn test_receiver_cancel_aborts_running_upload() {
+    let receiver = generate_identity();
+    let sender = generate_identity();
+    let mut server = start_server(Some(&receiver)).await;
+    let data = content(256 * 1024);
+    let response = prepare_resumable(
+        &client(&sender, &server),
+        &mut server,
+        &sender,
+        &[file_with_content("a", &data)],
+        &[],
+    )
+    .await;
+    let (_cancel, stale) = start_stalled_upload(
+        client(&sender, &server),
+        &server,
+        &response.session_id,
+        "a",
+        &response.files["a"],
+        0,
+        &data,
+        64 * 1024,
+    )
+    .await;
+
+    assert!(server.handle.cancel_v2_session(&response.session_id).await);
+
+    let result = tokio::time::timeout(Duration::from_secs(5), stale)
+        .await
+        .expect("the running upload must end")
+        .unwrap();
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_sender_cancel_aborts_running_upload() {
+    let receiver = generate_identity();
+    let sender = generate_identity();
+    let mut server = start_server(Some(&receiver)).await;
+    let data = content(256 * 1024);
+    let response = prepare_resumable(
+        &client(&sender, &server),
+        &mut server,
+        &sender,
+        &[file_with_content("a", &data)],
+        &[],
+    )
+    .await;
+    let (_cancel, stale) = start_stalled_upload(
+        client(&sender, &server),
+        &server,
+        &response.session_id,
+        "a",
+        &response.files["a"],
+        0,
+        &data,
+        64 * 1024,
+    )
+    .await;
+
+    client(&sender, &server)
+        .cancel(server.protocol, "127.0.0.1", server.port, &response.session_id)
+        .await
+        .unwrap();
+
+    let result = tokio::time::timeout(Duration::from_secs(5), stale)
+        .await
+        .expect("the running upload must end")
+        .unwrap();
+    assert!(result.is_err());
 }

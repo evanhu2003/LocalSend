@@ -208,6 +208,7 @@ impl App {
             identity.client_info(),
             None,
             Some(ServerConfigV2 {
+                resume_enabled: false,
                 resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
                 pin: None,
                 verify_checksums: true,

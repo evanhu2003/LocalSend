@@ -10,6 +10,9 @@ void main() {
   /// (an int is returned, anything else thrown).
   ({List<int> uploads, List<Duration> sleeps, List<int> reconnects, Future<void> Function() run, int Function() queries}) fake({
     int initialOffset = 0,
+    int fileSize = 1000,
+    bool queryOffsetFirst = false,
+    void Function()? onQuery,
     required List<Object?> uploadResults,
     List<Object> offsetResults = const [],
     DateTime Function()? now,
@@ -27,8 +30,11 @@ void main() {
       reconnects: reconnects,
       queries: () => queries,
       run: () => uploadWithResume(
+        fileSize: fileSize,
         initialOffset: initialOffset,
+        queryOffsetFirst: queryOffsetFirst,
         queryOffset: () async {
+          onQuery?.call();
           final result = offsetResults[queries++];
           if (result is int) {
             return result;
@@ -57,6 +63,8 @@ void main() {
     expect(classifyUploadFailure(connectionError), UploadFailureKind.connection);
     expect(classifyUploadFailure(const RsHttpClientError.io('broken pipe')), UploadFailureKind.connection);
     expect(classifyUploadFailure(const RsHttpClientError.statusCode(status: 500)), UploadFailureKind.connection);
+    // The receiver is still ending an old upload of the file (e.g. reading back a large part).
+    expect(classifyUploadFailure(const RsHttpClientError.statusCode(status: 503)), UploadFailureKind.connection);
     expect(classifyUploadFailure(RsHttpClientError.statusCode(status: 409, offset: BigInt.from(4))), UploadFailureKind.offsetMismatch);
     expect(classifyUploadFailure(const RsHttpClientError.statusCode(status: 403)), UploadFailureKind.sessionGone);
     expect(classifyUploadFailure(const RsHttpClientError.statusCode(status: 404)), UploadFailureKind.sessionGone);
@@ -147,5 +155,37 @@ void main() {
     await expectLater(f.run(), throwsA(mismatch));
 
     expect(f.uploads, [50, 0, 0]);
+  });
+
+  test('treats a queried offset at the file size as finished', () async {
+    // The receiver got the whole file, but its answer was lost.
+    final f = fake(fileSize: 100, uploadResults: [connectionError], offsetResults: [100]);
+
+    await f.run();
+
+    expect(f.uploads, [0]);
+  });
+
+  test('queries the offset first when asked, retrying on connection errors', () async {
+    final f = fake(queryOffsetFirst: true, uploadResults: [null], offsetResults: [connectionError, 40]);
+
+    await f.run();
+
+    expect(f.uploads, [40]);
+    expect(f.queries(), 2);
+  });
+
+  test('stops when cancelled while querying the offset', () async {
+    var cancelled = false;
+    final f = fake(
+      uploadResults: [connectionError, null],
+      offsetResults: [40],
+      isCancelled: () => cancelled,
+      onQuery: () => cancelled = true,
+    );
+
+    await expectLater(f.run(), throwsA(connectionError));
+
+    expect(f.uploads, [0]);
   });
 }

@@ -155,6 +155,7 @@ pub(crate) async fn save_req_to_target(
     file_size: u64,
     expected_sha256: Option<&str>,
     verify_prefix: bool,
+    durable: bool,
     timestamps: FileTimestamps,
     abort: CancellationToken,
 ) -> SaveOutcome {
@@ -178,6 +179,7 @@ pub(crate) async fn save_req_to_target(
         file_size,
         expected_sha256,
         verify_prefix,
+        durable,
         timestamps,
         abort,
     )
@@ -193,13 +195,19 @@ pub(crate) async fn save_req_to_target(
 /// (offset above 0), it is only verified if `verify_prefix` is set: the bytes
 /// before the offset are then read back from the target to hash them.
 ///
+/// With `durable`, the received bytes are synced every [SYNC_INTERVAL] and
+/// when the transfer breaks off, so it can be resumed (resumable sessions);
+/// otherwise the file is only flushed at the end, like before.
+///
 /// Cancelling `abort` ends the transfer like a dropped connection.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn save_stream_to_target(
     mut body: impl Stream<Item = Result<Bytes, String>> + Unpin,
     target: FileUploadTarget,
     file_size: u64,
     expected_sha256: Option<&str>,
     verify_prefix: bool,
+    durable: bool,
     timestamps: FileTimestamps,
     abort: CancellationToken,
 ) -> SaveOutcome {
@@ -235,6 +243,8 @@ pub(crate) async fn save_stream_to_target(
                     offset,
                     expected_size: file_size,
                     hash: expected_sha256.is_some() && (offset == 0 || verify_prefix),
+                    durable,
+                    abort: abort.clone(),
                 },
                 progress_tx,
                 timestamps,
@@ -268,6 +278,8 @@ pub(crate) async fn save_stream_to_target(
                     offset,
                     expected_size: file_size,
                     hash: expected_sha256.is_some() && (offset == 0 || verify_prefix),
+                    durable,
+                    abort: abort.clone(),
                 },
                 progress_tx,
                 timestamps,
@@ -427,6 +439,12 @@ struct WriterSettings {
     /// Whether to hash the complete file, reading back the first `offset`
     /// bytes.
     hash: bool,
+
+    /// Whether to make the received bytes durable as they arrive.
+    durable: bool,
+
+    /// Stops reading back the first `offset` bytes when the upload is aborted.
+    abort: CancellationToken,
 }
 
 struct WriterOutcome {
@@ -489,6 +507,8 @@ async fn write_file_from_receiver(
         offset,
         expected_size,
         hash,
+        durable,
+        abort,
     } = settings;
     let fail = |error: String, committed: u64| WriterOutcome {
         result: Err(error),
@@ -509,8 +529,13 @@ async fn write_file_from_receiver(
     if offset > 0 {
         // Read back the bytes that are kept, so the complete file is hashed.
         if let Some(hasher) = &mut hasher {
-            if let Err(e) = hash_prefix(&mut file, offset, hasher).await {
-                return fail(format!("Failed to read the received part: {e}"), 0);
+            match hash_prefix(&mut file, offset, hasher, &abort).await {
+                Ok(()) => (),
+                // Aborted before anything changed: the received part stays.
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {
+                    return fail("Upload aborted".to_string(), offset);
+                }
+                Err(e) => return fail(format!("Failed to read the received part: {e}"), 0),
             }
         }
         // Drop anything beyond the offset (e.g. bytes that were written but
@@ -553,9 +578,9 @@ async fn write_file_from_receiver(
         }
         written += len;
         since_sync += len;
-        if since_sync >= SYNC_INTERVAL {
+        if durable && since_sync >= SYNC_INTERVAL {
             since_sync = 0;
-            match sync(&mut file).await {
+            match sync(&mut file, true).await {
                 Ok(()) => committed = written,
                 Err(e) => {
                     error = Some(e);
@@ -567,7 +592,7 @@ async fn write_file_from_receiver(
     }
 
     // Make everything received durable, also after an error or interruption.
-    match sync(&mut file).await {
+    match sync(&mut file, durable).await {
         Ok(()) => committed = written,
         Err(e) => {
             error.get_or_insert(e);
@@ -629,10 +654,13 @@ async fn write_file_from_receiver(
 }
 
 /// Feeds the first `len` bytes of `file` into `hasher`.
+///
+/// Fails with [std::io::ErrorKind::Interrupted] once `abort` is cancelled.
 async fn hash_prefix(
     file: &mut tokio::fs::File,
     len: u64,
     hasher: &mut Sha256,
+    abort: &CancellationToken,
 ) -> std::io::Result<()> {
     use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
@@ -640,6 +668,12 @@ async fn hash_prefix(
     let mut remaining = len;
     let mut buffer = vec![0u8; WRITE_BUFFER_SIZE];
     while remaining > 0 {
+        if abort.is_cancelled() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "Upload aborted",
+            ));
+        }
         let want = remaining.min(buffer.len() as u64) as usize;
         let read = file.read(&mut buffer[..want]).await?;
         if read == 0 {
@@ -654,13 +688,19 @@ async fn hash_prefix(
     Ok(())
 }
 
-/// Flushes the buffer and makes the written data durable.
-async fn sync(file: &mut tokio::io::BufWriter<tokio::fs::File>) -> Result<(), String> {
+/// Flushes the buffer and, when `durable`, makes the written data durable.
+async fn sync(
+    file: &mut tokio::io::BufWriter<tokio::fs::File>,
+    durable: bool,
+) -> Result<(), String> {
     use tokio::io::AsyncWriteExt;
 
     file.flush()
         .await
         .map_err(|e| format!("Failed to flush file: {e}"))?;
+    if !durable {
+        return Ok(());
+    }
     // Best-effort: a descriptor may be backed by something that cannot be
     // synced (e.g. a pipe). The data was handed to the OS either way.
     if let Err(e) = file.get_ref().sync_data().await {
@@ -717,6 +757,7 @@ mod tests {
             11,
             None,
             false,
+            true,
             FileTimestamps::default(),
             CancellationToken::new(),
         )
@@ -738,6 +779,7 @@ mod tests {
             8,
             None,
             false,
+            true,
             FileTimestamps::default(),
             CancellationToken::new(),
         )
@@ -760,6 +802,7 @@ mod tests {
             11,
             Some(&expected),
             true,
+            true,
             FileTimestamps::default(),
             CancellationToken::new(),
         )
@@ -774,6 +817,7 @@ mod tests {
             target,
             11,
             Some(&expected),
+            true,
             true,
             FileTimestamps::default(),
             CancellationToken::new(),
@@ -803,6 +847,7 @@ mod tests {
             SYNC_INTERVAL * 2,
             None,
             false,
+            true,
             FileTimestamps::default(),
             abort,
         )
@@ -812,6 +857,69 @@ mod tests {
         let len = std::fs::metadata(&path).unwrap().len();
         assert_eq!(outcome.committed, len);
         assert!(outcome.committed >= SYNC_INTERVAL, "committed {}", outcome.committed);
+    }
+
+    /// Transfers that cannot be resumed (e.g. from official peers) do not pay
+    /// for making every 16 MiB durable.
+    #[tokio::test]
+    async fn test_writer_without_durability_does_not_sync_midway() {
+        let path = temp_file(b"");
+        let (progress_tx, mut progress_rx) = mpsc::channel(64);
+        let (target, _result_rx) = path_target(&path, 0, Some(progress_tx));
+        let first: Vec<u8> = vec![1u8; (SYNC_INTERVAL + 100) as usize];
+        let chunks = stream::iter(vec![Ok(Bytes::from(first)), Ok(Bytes::from_static(b"0123456789"))]);
+
+        let outcome = save_stream_to_target(
+            chunks,
+            target,
+            SYNC_INTERVAL + 110,
+            None,
+            false,
+            false,
+            FileTimestamps::default(),
+            CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(outcome.result, SaveResult::Success);
+        let mut events = Vec::new();
+        while let Ok(event) = progress_rx.try_recv() {
+            events.push(event);
+        }
+        let (last, midway) = events.split_last().unwrap();
+        assert!(midway.iter().all(|e| e.committed == 0), "{midway:?}");
+        assert_eq!(last.committed, SYNC_INTERVAL + 110);
+    }
+
+    /// An aborted upload does not keep reading back a large received part
+    /// (which would block the sender's reconnect).
+    #[tokio::test]
+    async fn test_writer_stops_reading_back_when_aborted() {
+        let path = temp_file(b"");
+        let offset: u64 = 8 * 1024 * 1024 * 1024;
+        std::fs::OpenOptions::new().write(true).open(&path).unwrap().set_len(offset).unwrap();
+        let (target, _result_rx) = path_target(&path, offset, None);
+        let abort = CancellationToken::new();
+        abort.cancel();
+
+        let started = std::time::Instant::now();
+        let outcome = save_stream_to_target(
+            Box::pin(stream::pending()),
+            target,
+            offset + 100,
+            Some("00"),
+            true,
+            true,
+            FileTimestamps::default(),
+            abort,
+        )
+        .await;
+
+        assert!(started.elapsed() < std::time::Duration::from_secs(1), "took {:?}", started.elapsed());
+        assert_eq!(outcome.result, SaveResult::Failed);
+        assert_eq!(outcome.committed, offset);
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), offset);
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[tokio::test]
@@ -826,6 +934,7 @@ mod tests {
             110,
             None,
             false,
+            true,
             FileTimestamps::default(),
             CancellationToken::new(),
         )

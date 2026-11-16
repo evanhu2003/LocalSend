@@ -76,8 +76,24 @@ void main() {
     expect(existingFile.readAsStringSync(), 'existing');
   });
 
-  test('partialFileName hides the file', () {
-    expect(partialFileName('a.jpg'), '.a.jpg.lspart');
+  test('partialFileName hides the file and is unique per partial file', () {
+    expect(partialFileName('a.jpg', 'id1'), '.a.jpg.id1.lspart');
+  });
+
+  test('two files with the same name get different partial files', () async {
+    Future<String> prepare(String id) async {
+      final target = await preparePartialSaveTarget(
+        destinationDirectory: tempDir.path,
+        cacheDirectory: p.join(tempDir.path, 'cache'),
+        fileName: 'image.jpg',
+        saveToGallery: false,
+        createdDirectories: {},
+        partialId: id,
+      );
+      return target.path!;
+    }
+
+    expect(await prepare('first'), isNot(await prepare('second')));
   });
 
   test('preparePartialSaveTarget writes a hidden file next to the destination', () async {
@@ -87,9 +103,10 @@ void main() {
       fileName: 'a.jpg',
       saveToGallery: false,
       createdDirectories: {},
+      partialId: 'id1',
     );
 
-    expect(target.path, p.join(tempDir.path, '.a.jpg.lspart'));
+    expect(target.path, p.join(tempDir.path, '.a.jpg.id1.lspart'));
     expect(target.displayPath, target.path);
   });
 

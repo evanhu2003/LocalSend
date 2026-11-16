@@ -280,6 +280,7 @@ pub async fn start_server(
         },
         internal_config,
         Some(ServerConfigV2 {
+            resume_enabled: true,
             resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin,
             verify_checksums,

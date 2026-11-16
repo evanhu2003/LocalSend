@@ -58,6 +58,32 @@ impl UploadSessionV2 {
         }
     }
 
+    /// Whether an unfinished file of this session is among `offered`
+    /// (lowercase SHA-256 and size): a new request with it continues this
+    /// session's work.
+    pub(crate) fn continues_any(&self, offered: &std::collections::HashSet<(String, u64)>) -> bool {
+        self.files.values().any(|file| {
+            file.status != FileStatusV2::Finished
+                && file
+                    .dto
+                    .sha256
+                    .as_ref()
+                    .is_some_and(|sha256| offered.contains(&(sha256.to_ascii_lowercase(), file.dto.size)))
+        })
+    }
+
+    /// Ends the running uploads when the session is cancelled. The files of a
+    /// resumable session are kept for a later transfer, which must not find
+    /// a writer of this session still busy with them. Other sessions keep
+    /// the original behavior: running uploads complete.
+    pub(crate) fn abort_resumable_uploads(&self) {
+        if self.resumable {
+            for file in self.files.values() {
+                file.abort.cancel();
+            }
+        }
+    }
+
     /// Whether an upload request is currently running.
     pub(crate) fn is_busy(&self) -> bool {
         self.files.values().any(|file| file.status == FileStatusV2::InProgress)

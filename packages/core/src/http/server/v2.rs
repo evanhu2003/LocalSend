@@ -301,41 +301,95 @@ pub(crate) async fn prepare_upload(
     // Resuming is bound to the sender's certificate; without TLS the claimed
     // identity could be spoofed by anyone on the network.
     let sender_cert_fingerprint = client_info.cert_fingerprint();
-    let resumable = sender_cert_fingerprint.is_some()
+    let resumable = v2.resume_enabled
+        && sender_cert_fingerprint.is_some()
         && payload
             .resume_support
             .is_some_and(|version| version >= RESUME_SUPPORT_VERSION);
 
+    // The files of this request a waiting session of the sender may hold.
+    let offered: HashSet<(String, u64)> = payload
+        .files
+        .values()
+        .filter_map(|file| {
+            file.sha256
+                .as_ref()
+                .map(|sha256| (sha256.to_ascii_lowercase(), file.size))
+        })
+        .collect();
+    let busy = || {
+        AppError::Message(
+            StatusCode::CONFLICT,
+            "Blocked by another session".to_string(),
+        )
+    };
+
     // Claim the single session slot.
-    let superseded = {
+    let deadline = tokio::time::Instant::now() + STALE_UPLOAD_TIMEOUT;
+    let superseded = loop {
+        enum Claim {
+            Free,
+            Supersede(String),
+            WaitFor(Arc<tokio::sync::Notify>),
+            Busy,
+        }
+
         let mut slot = v2.session.lock().await;
-        let superseded = match slot.as_ref() {
-            None => None,
+        let claim = match slot.as_ref() {
+            None => Claim::Free,
             // The sender of a resumable session is back with a new request
-            // (e.g. its application restarted): that session is over.
+            // for the same work (e.g. its application restarted): that
+            // session is over. Any other request of it is just busy, so an
+            // unrelated message does not end a transfer.
             Some(SessionStateV2::Active(session))
                 if resumable
                     && session.resumable
-                    && session.sender_cert_fingerprint == sender_cert_fingerprint =>
+                    && session.sender_cert_fingerprint == sender_cert_fingerprint
+                    && session.continues_any(&offered) =>
             {
+                // Uploads still running belong to dead connections. Their
+                // writers must be done with the files before the new session
+                // continues them.
+                let mut running = None;
                 for file in session.files.values() {
-                    file.abort.cancel();
+                    if file.status == FileStatusV2::InProgress {
+                        file.abort.cancel();
+                        running.get_or_insert_with(|| file.settled.clone());
+                    }
                 }
-                Some(session.session_id.clone())
+                match running {
+                    Some(settled) => Claim::WaitFor(settled),
+                    None => Claim::Supersede(session.session_id.clone()),
+                }
             }
-            Some(_) => {
-                return Err(AppError::Message(
-                    StatusCode::CONFLICT,
-                    "Blocked by another session".to_string(),
-                ));
-            }
+            Some(_) => Claim::Busy,
         };
-        *slot = Some(SessionStateV2::Pending(PendingSessionV2 {
-            session_id: session_id.clone(),
-            sender_ip: client_info.ip,
-            cancel: cancelled.clone(),
-        }));
-        superseded
+
+        match claim {
+            Claim::Busy => return Err(busy()),
+            Claim::WaitFor(settled) => {
+                // Registered while the session is locked, so the end of the
+                // attempt (which needs the lock) cannot be missed.
+                let notified = settled.notified();
+                tokio::pin!(notified);
+                notified.as_mut().enable();
+                drop(slot);
+                if tokio::time::timeout_at(deadline, notified).await.is_err() {
+                    return Err(busy());
+                }
+            }
+            Claim::Free | Claim::Supersede(_) => {
+                *slot = Some(SessionStateV2::Pending(PendingSessionV2 {
+                    session_id: session_id.clone(),
+                    sender_ip: client_info.ip,
+                    cancel: cancelled.clone(),
+                }));
+                break match claim {
+                    Claim::Supersede(old_session_id) => Some(old_session_id),
+                    _ => None,
+                };
+            }
+        }
     };
     if let Some(old_session_id) = superseded {
         tracing::info!("Upload session {old_session_id} superseded by {session_id}");
@@ -397,7 +451,9 @@ pub(crate) async fn prepare_upload(
         .into_iter()
         .filter(|(id, _)| accepted_ids.contains(id))
         .map(|(id, dto)| {
-            let committed = match resumable {
+            // Only files with a checksum can be continued: appending is only
+            // safe when the complete file is verified afterwards.
+            let committed = match resumable && dto.sha256.is_some() {
                 true => offsets
                     .get(&id)
                     .copied()
@@ -569,6 +625,7 @@ pub(crate) async fn upload(
             file_size,
             expected_sha256.as_deref(),
             verify_prefix,
+            resumable,
             timestamps,
             abort,
         )
@@ -718,6 +775,7 @@ pub(crate) async fn cancel(
                             client_info.cert_fingerprint().as_deref(),
                         ) =>
                 {
+                    session.abort_resumable_uploads();
                     *slot = None;
                     true
                 }
@@ -913,7 +971,7 @@ async fn finalize_file(v2: &V2State, session_id: &str, file_id: &str, outcome: S
                         file.status = FileStatusV2::Pending;
                         file.committed = 0;
                     }
-                    SaveResult::Failed if resumable => {
+                    SaveResult::Failed if resumable && file.dto.sha256.is_some() => {
                         file.status = FileStatusV2::Interrupted;
                         file.committed = committed;
                         // Only checksum mismatches are limited; a broken

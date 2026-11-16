@@ -46,6 +46,12 @@ pub struct ServerConfigV2 {
     /// and a mismatch is not detected. Resumed files are always verified.
     pub verify_checksums: bool,
 
+    /// Whether the application can continue interrupted files (LocalSend fork
+    /// extension): it answers [v2::ServerEventV2::FileUpload] events with a
+    /// target at the given offset, i.e. it writes a file to the same place
+    /// on every attempt. Without it, sessions are never resumable.
+    pub resume_enabled: bool,
+
     /// How long a resumable session waits for its sender to come back while
     /// no upload is running, see [DEFAULT_RESUME_IDLE_TIMEOUT].
     pub resume_idle_timeout: std::time::Duration,
@@ -66,6 +72,9 @@ pub(crate) struct V2State {
 
     /// Whether sender-provided SHA-256 checksums are verified after receiving.
     pub(crate) verify_checksums: bool,
+
+    /// See [ServerConfigV2::resume_enabled].
+    pub(crate) resume_enabled: bool,
 
     /// See [ServerConfigV2::resume_idle_timeout].
     pub(crate) resume_idle_timeout: std::time::Duration,
@@ -115,6 +124,7 @@ impl AppState {
             Arc::new(V2State {
                 pin: config.pin,
                 verify_checksums: config.verify_checksums,
+                resume_enabled: config.resume_enabled,
                 resume_idle_timeout: config.resume_idle_timeout,
                 event_tx: config.event_tx,
                 session: Mutex::new(None),
@@ -205,8 +215,10 @@ impl ServerHandle {
     /// Cancels the active v2 upload session if it matches `session_id`,
     /// e.g. because the user aborted the transfer on the receiving side.
     ///
-    /// Uploads that are already in progress still run to completion, but new
-    /// upload requests fail and a new session can be created.
+    /// Uploads that are already in progress still run to completion (in a
+    /// resumable session they are ended, so their partial files are free for
+    /// a later transfer), but new upload requests fail and a new session can
+    /// be created.
     /// No [ServerEventV2::SessionEnd] is emitted: the application initiated
     /// the cancellation itself.
     ///
@@ -218,6 +230,7 @@ impl ServerHandle {
         let mut slot = v2.session.lock().await;
         match slot.as_ref() {
             Some(SessionStateV2::Active(session)) if session.session_id == session_id => {
+                session.abort_resumable_uploads();
                 *slot = None;
                 true
             }

@@ -277,7 +277,9 @@ String? _safParentUri({required String destinationPath, required String? documen
 const _externalStorageAuthority = 'com.android.externalstorage.documents';
 
 /// The hidden name a file of a resumable transfer has while it is incomplete.
-String partialFileName(String finalName) => '.$finalName.lspart';
+/// Unique per partial file ([partialId]): two files of a transfer may well
+/// have the same name.
+String partialFileName(String finalName, String partialId) => '.$finalName.$partialId.lspart';
 
 /// Prepares the destination for an incoming file of a resumable transfer: an
 /// incomplete file must not look like a complete one.
@@ -298,8 +300,9 @@ Future<FileSaveTarget> preparePartialSaveTarget({
   int? androidSdkInt,
   String? partialId,
 }) async {
+  final id = partialId ?? const Uuid().v4();
   if (saveToGallery) {
-    final directory = p.join(cacheDirectory, 'resume', partialId ?? const Uuid().v4());
+    final directory = p.join(cacheDirectory, 'resume', id);
     await Directory(directory).create(recursive: true);
     final path = p.join(directory, p.basename(fileName));
     return FileSaveTarget(path: path, fileDescriptor: null, displayPath: path);
@@ -317,13 +320,13 @@ Future<FileSaveTarget> preparePartialSaveTarget({
       final renamable = Uri.parse(parentUri).authority == _externalStorageAuthority;
       final createdFile = await android_channel.createFileAndroid(
         parentUri: parentUri,
-        fileName: renamable ? partialFileName(finalName) : finalName,
+        fileName: renamable ? partialFileName(finalName, id) : finalName,
       );
       return FileSaveTarget(path: null, fileDescriptor: createdFile.fileDescriptor, displayPath: createdFile.uri);
     }
   }
 
-  final partialPath = p.join(p.dirname(destinationPath), partialFileName(p.basename(destinationPath)));
+  final partialPath = p.join(p.dirname(destinationPath), partialFileName(p.basename(destinationPath), id));
   return FileSaveTarget(path: partialPath, fileDescriptor: null, displayPath: partialPath);
 }
 
