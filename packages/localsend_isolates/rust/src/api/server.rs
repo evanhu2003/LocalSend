@@ -265,6 +265,7 @@ pub async fn start_server(
         },
         internal_config,
         Some(ServerConfigV2 {
+            resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin,
             verify_checksums,
             event_tx,
@@ -391,6 +392,7 @@ impl RsHttpServer {
                 file_id,
                 file,
                 target_tx,
+                ..
             } => {
                 self.pending_uploads
                     .lock()
@@ -434,6 +436,8 @@ impl RsHttpServer {
             ServerEventV2::ListenerFailed { error } => {
                 sink.add(RsServerEvent::ListenerFailed { error }).is_ok()
             }
+            // Forwarded to the application once it supports resuming.
+            ServerEventV2::FileInterrupted { .. } => true,
         }
     }
 

@@ -1,13 +1,13 @@
 use crate::http::dto_v2::{
     InfoResponseDtoV2, PrepareUploadRequestDtoV2, PrepareUploadResponseDtoV2, RegisterDtoV2,
-    RegisterResponseDtoV2, RESUME_SUPPORT_VERSION,
+    RegisterResponseDtoV2, UploadOffsetResponseDtoV2, RESUME_SUPPORT_VERSION,
 };
 use crate::http::server::common::collect_to_json::CollectToJson;
 use crate::http::server::common::error::AppError;
 use crate::http::server::common::pin::check_pin;
 use crate::http::server::common::query::parse_query;
 use crate::http::server::common::response::{empty_body, BoxedBody, JsonResponse};
-use crate::http::server::common::save::{FileTimestamps, FileUploadTarget, SaveResult};
+use crate::http::server::common::save::{FileTimestamps, FileUploadTarget, SaveOutcome, SaveResult};
 use crate::http::server::common::session::{
     FileStatusV2, PendingSessionV2, SessionFileV2, SessionStateV2, UploadSessionV2,
 };
@@ -90,8 +90,24 @@ pub enum ServerEventV2 {
         /// The metadata of the file being uploaded.
         file: FileDto,
 
+        /// The number of bytes of the file the upload starts at: the bytes
+        /// before were received earlier (resumed upload) and must be kept.
+        /// The target must use this offset. Always 0 unless the session is
+        /// resumable.
+        offset: u64,
+
         /// Channel to send the target the file content should be written to.
         target_tx: oneshot::Sender<FileUploadTarget>,
+    },
+
+    /// An upload of a resumable session broke off. The session stays active:
+    /// the sender may continue the file at `committed` bytes.
+    FileInterrupted {
+        session_id: String,
+        file_id: String,
+
+        /// The number of bytes of the file durably stored.
+        committed: u64,
     },
 
     /// An upload session ended.
@@ -165,6 +181,15 @@ pub enum SessionEndReasonV2 {
 
     /// The sender cancelled the session via `POST /api/localsend/v2/cancel`.
     Cancelled,
+
+    /// A resumable session waited too long for its sender to come back
+    /// ([crate::http::server::ServerConfigV2::resume_idle_timeout]).
+    /// Unfinished files failed.
+    IdleTimeout,
+
+    /// The sender of a resumable session started a new session (e.g. after
+    /// its application restarted). Unfinished files failed.
+    Superseded,
 }
 
 pub(crate) async fn register(
@@ -273,25 +298,6 @@ pub(crate) async fn prepare_upload(
     let session_id = Uuid::new_v4().to_string();
     let cancelled = CancellationToken::new();
 
-    // Claim the single session slot.
-    {
-        let mut slot = v2.session.lock().await;
-        if slot.is_some() {
-            return Err(AppError::Message(
-                StatusCode::CONFLICT,
-                "Blocked by another session".to_string(),
-            ));
-        }
-        *slot = Some(SessionStateV2::Pending(PendingSessionV2 {
-            session_id: session_id.clone(),
-            sender_ip: client_info.ip,
-            cancel: cancelled.clone(),
-        }));
-    }
-
-    // Frees the slot again if this request is aborted before a session is created.
-    let mut pending_guard = PendingSessionGuard::new(v2.clone(), session_id.clone());
-
     // Resuming is bound to the sender's certificate; without TLS the claimed
     // identity could be spoofed by anyone on the network.
     let sender_cert_fingerprint = client_info.cert_fingerprint();
@@ -299,6 +305,51 @@ pub(crate) async fn prepare_upload(
         && payload
             .resume_support
             .is_some_and(|version| version >= RESUME_SUPPORT_VERSION);
+
+    // Claim the single session slot.
+    let superseded = {
+        let mut slot = v2.session.lock().await;
+        let superseded = match slot.as_ref() {
+            None => None,
+            // The sender of a resumable session is back with a new request
+            // (e.g. its application restarted): that session is over.
+            Some(SessionStateV2::Active(session))
+                if resumable
+                    && session.resumable
+                    && session.sender_cert_fingerprint == sender_cert_fingerprint =>
+            {
+                for file in session.files.values() {
+                    file.abort.cancel();
+                }
+                Some(session.session_id.clone())
+            }
+            Some(_) => {
+                return Err(AppError::Message(
+                    StatusCode::CONFLICT,
+                    "Blocked by another session".to_string(),
+                ));
+            }
+        };
+        *slot = Some(SessionStateV2::Pending(PendingSessionV2 {
+            session_id: session_id.clone(),
+            sender_ip: client_info.ip,
+            cancel: cancelled.clone(),
+        }));
+        superseded
+    };
+    if let Some(old_session_id) = superseded {
+        tracing::info!("Upload session {old_session_id} superseded by {session_id}");
+        let _ = v2
+            .event_tx
+            .send(ServerEventV2::SessionEnd {
+                session_id: old_session_id,
+                reason: SessionEndReasonV2::Superseded,
+            })
+            .await;
+    }
+
+    // Frees the slot again if this request is aborted before a session is created.
+    let mut pending_guard = PendingSessionGuard::new(v2.clone(), session_id.clone());
 
     let (decision_tx, decision_rx) = oneshot::channel();
     let event = ServerEventV2::PrepareUpload {
@@ -354,14 +405,7 @@ pub(crate) async fn prepare_upload(
                     .unwrap_or(0),
                 false => 0,
             };
-            let file = SessionFileV2 {
-                dto,
-                token: Uuid::new_v4().to_string(),
-                status: FileStatusV2::Pending,
-                attempts: 0,
-                committed,
-            };
-            (id, file)
+            (id, SessionFileV2::new(dto, committed))
         })
         .collect();
 
@@ -395,7 +439,10 @@ pub(crate) async fn prepare_upload(
     }
     pending_guard.disarm();
 
-    tracing::info!("Upload session created: {session_id}");
+    tracing::info!("Upload session created: {session_id} (resumable: {resumable})");
+    if resumable {
+        spawn_idle_watchdog(v2.clone(), session_id.clone());
+    }
 
     Ok(JsonResponse {
         status: StatusCode::OK,
@@ -427,35 +474,56 @@ pub(crate) async fn upload(
             "Missing parameters".to_string(),
         ));
     };
+    let offset = match query.get("offset") {
+        Some(offset) => offset
+            .parse::<u64>()
+            .map_err(|_| AppError::BadRequest("Invalid offset".to_string()))?,
+        None => 0,
+    };
+    let session_id = session_id.clone();
+    let file_id = file_id.clone();
 
     // Validate the request and mark the file as in progress.
-    let file_dto = {
+    let (file_dto, resumable, abort) = {
         let mut slot = v2.session.lock().await;
         let Some(SessionStateV2::Active(session)) = slot.as_mut() else {
             return Err(invalid_token_error());
         };
-        if session.session_id != *session_id || session.sender_ip != client_info.ip {
+        if session.session_id != session_id
+            || !session.authorizes(&client_info.ip, client_info.cert_fingerprint().as_deref())
+        {
             return Err(invalid_token_error());
         }
-        let Some(file) = session.files.get_mut(file_id) else {
+        let resumable = session.resumable;
+        let Some(file) = session.files.get_mut(&file_id) else {
             return Err(invalid_token_error());
         };
-        if file.token != *token || file.status != FileStatusV2::Pending {
+        if file.token != *token
+            || !matches!(file.status, FileStatusV2::Pending | FileStatusV2::Interrupted)
+        {
             return Err(invalid_token_error());
+        }
+        if offset != file.committed {
+            return Err(AppError::OffsetMismatch(file.committed));
         }
         file.status = FileStatusV2::InProgress;
         file.attempts = file.attempts.saturating_add(1);
-        file.dto.clone()
+        file.abort = CancellationToken::new();
+        (file.dto.clone(), resumable, file.abort.clone())
     };
 
-    // Marks the file as failed if this request is aborted mid-transfer.
-    let mut upload_guard = UploadGuard::new(v2.clone(), session_id.clone(), file_id.clone());
+    // Ends the attempt (as failed or interrupted) if this request is dropped
+    // before the file is saved.
+    let mut upload_guard = UploadGuard::new(v2.clone(), session_id.clone(), file_id.clone(), offset);
 
     let file_size = file_dto.size;
-    let expected_sha256 = match v2.verify_checksums {
+    // Resumed files are always verified: appending to the wrong bytes must
+    // not produce a file that looks complete.
+    let expected_sha256 = match resumable || v2.verify_checksums {
         true => file_dto.sha256.clone(),
         false => None,
     };
+    let verify_prefix = resumable && offset > 0 && expected_sha256.is_some();
     let timestamps = match &file_dto.metadata {
         Some(metadata) => FileTimestamps {
             modified: metadata.modified_time(),
@@ -469,33 +537,50 @@ pub(crate) async fn upload(
         session_id: session_id.clone(),
         file_id: file_id.clone(),
         file: file_dto,
+        offset,
         target_tx,
     };
+    let not_started = SaveOutcome {
+        result: SaveResult::Failed,
+        committed: offset,
+    };
     if v2.event_tx.send(event).await.is_err() {
-        upload_guard.finish(SaveResult::Failed).await;
+        upload_guard.finish(not_started).await;
         return Err(AppError::Status(StatusCode::INTERNAL_SERVER_ERROR));
     }
 
-    let Ok(target) = target_rx.await else {
-        upload_guard.finish(SaveResult::Failed).await;
+    let target = tokio::select! {
+        biased;
+        _ = abort.cancelled() => None,
+        target = target_rx => target.ok(),
+    };
+    let Some(target) = target else {
+        upload_guard.finish(not_started).await;
         return Err(AppError::Status(StatusCode::INTERNAL_SERVER_ERROR));
     };
 
-    let result = common::save::save_req_to_target(
-        req,
-        target,
-        file_size,
-        expected_sha256.as_deref(),
-        false,
-        timestamps,
-        CancellationToken::new(),
-    )
-    .await
-    .result;
+    // Saving runs in its own task: even if this request handler is dropped
+    // (the connection is gone), the attempt ends with the offset the target
+    // actually committed, which a resumed upload continues at.
+    let save = tokio::spawn(async move {
+        let outcome = common::save::save_req_to_target(
+            req,
+            target,
+            file_size,
+            expected_sha256.as_deref(),
+            verify_prefix,
+            timestamps,
+            abort,
+        )
+        .await;
+        upload_guard.finish(outcome).await;
+        outcome
+    });
+    let Ok(outcome) = save.await else {
+        return Err(AppError::Status(StatusCode::INTERNAL_SERVER_ERROR));
+    };
 
-    upload_guard.finish(result).await;
-
-    match result {
+    match outcome.result {
         SaveResult::Success => Ok(Response::new(empty_body())),
         SaveResult::Failed => Err(AppError::Status(StatusCode::INTERNAL_SERVER_ERROR)),
         SaveResult::HashMismatch => Err(AppError::Message(
@@ -503,6 +588,87 @@ pub(crate) async fn upload(
             "Checksum mismatch".to_string(),
         )),
     }
+}
+
+/// How long `upload-offset` waits for a still running upload of the file to
+/// end after aborting it.
+const STALE_UPLOAD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// `POST /api/localsend/v2/upload-offset?sessionId=…&fileId=…&token=…`
+/// (LocalSend fork extension): the offset the next upload of a file of a
+/// resumable session must start at.
+///
+/// A sender only asks after its own upload broke off, so an upload of the
+/// file that is still running here is a leftover of a dead connection: it is
+/// aborted first, which commits what it received.
+pub(crate) async fn upload_offset(
+    req: Request<Incoming>,
+    state: AppState,
+    client_info: RequestClientInfo,
+) -> Result<Response<BoxedBody>, AppError> {
+    let v2 = require_v2(&state)?;
+    let query = parse_query(req.uri().query());
+
+    let (Some(session_id), Some(file_id), Some(token)) = (
+        query.get("sessionId"),
+        query.get("fileId"),
+        query.get("token"),
+    ) else {
+        return Err(AppError::Message(
+            StatusCode::BAD_REQUEST,
+            "Missing parameters".to_string(),
+        ));
+    };
+    let cert_fingerprint = client_info.cert_fingerprint();
+    let deadline = tokio::time::Instant::now() + STALE_UPLOAD_TIMEOUT;
+
+    loop {
+        let mut slot = v2.session.lock().await;
+        let Some(SessionStateV2::Active(session)) = slot.as_mut() else {
+            return Err(invalid_token_error());
+        };
+        if session.session_id != *session_id
+            || !session.resumable
+            || !session.authorizes(&client_info.ip, cert_fingerprint.as_deref())
+        {
+            return Err(invalid_token_error());
+        }
+        let Some(file) = session.files.get_mut(file_id) else {
+            return Err(invalid_token_error());
+        };
+        if file.token != *token {
+            return Err(invalid_token_error());
+        }
+        let settled = match file.status {
+            FileStatusV2::Pending | FileStatusV2::Interrupted => {
+                return Ok(offset_response(file.committed));
+            }
+            FileStatusV2::Finished => return Ok(offset_response(file.dto.size)),
+            FileStatusV2::Failed => return Err(invalid_token_error()),
+            FileStatusV2::InProgress => {
+                file.abort.cancel();
+                file.settled.clone()
+            }
+        };
+        // Registered while the session is locked, so the end of the attempt
+        // (which needs the lock) cannot be missed.
+        let notified = settled.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        drop(slot);
+
+        if tokio::time::timeout_at(deadline, notified).await.is_err() {
+            return Err(AppError::Status(StatusCode::SERVICE_UNAVAILABLE));
+        }
+    }
+}
+
+fn offset_response(offset: u64) -> Response<BoxedBody> {
+    JsonResponse {
+        status: StatusCode::OK,
+        body: UploadOffsetResponseDtoV2 { offset },
+    }
+    .into_response()
 }
 
 pub(crate) async fn cancel(
@@ -546,7 +712,11 @@ pub(crate) async fn cancel(
             let mut slot = v2.session.lock().await;
             match slot.as_ref() {
                 Some(SessionStateV2::Active(session))
-                    if session.session_id == *session_id && session.sender_ip == client_info.ip =>
+                    if session.session_id == *session_id
+                        && session.authorizes(
+                            &client_info.ip,
+                            client_info.cert_fingerprint().as_deref(),
+                        ) =>
                 {
                     *slot = None;
                     true
@@ -660,22 +830,27 @@ struct UploadGuard {
     v2: Arc<V2State>,
     session_id: String,
     file_id: String,
+
+    /// The offset the attempt started at: committed when it ends before
+    /// writing anything.
+    offset: u64,
     armed: bool,
 }
 
 impl UploadGuard {
-    fn new(v2: Arc<V2State>, session_id: String, file_id: String) -> Self {
+    fn new(v2: Arc<V2State>, session_id: String, file_id: String, offset: u64) -> Self {
         Self {
             v2,
             session_id,
             file_id,
+            offset,
             armed: true,
         }
     }
 
-    async fn finish(&mut self, result: SaveResult) {
+    async fn finish(&mut self, outcome: SaveOutcome) {
         self.armed = false;
-        finalize_file(&self.v2, &self.session_id, &self.file_id, result).await;
+        finalize_file(&self.v2, &self.session_id, &self.file_id, outcome).await;
     }
 }
 
@@ -687,8 +862,12 @@ impl Drop for UploadGuard {
         let v2 = self.v2.clone();
         let session_id = std::mem::take(&mut self.session_id);
         let file_id = std::mem::take(&mut self.file_id);
+        let outcome = SaveOutcome {
+            result: SaveResult::Failed,
+            committed: self.offset,
+        };
         tokio::spawn(async move {
-            finalize_file(&v2, &session_id, &file_id, SaveResult::Failed).await;
+            finalize_file(&v2, &session_id, &file_id, outcome).await;
         });
     }
 }
@@ -703,8 +882,12 @@ const MAX_UPLOAD_ATTEMPTS: u8 = 3;
 /// A checksum mismatch resets the file to [FileStatusV2::Pending] (as long as
 /// [MAX_UPLOAD_ATTEMPTS] is not exhausted) so the sender can retry the upload
 /// with the same token; the session stays active in that case.
-async fn finalize_file(v2: &V2State, session_id: &str, file_id: &str, result: SaveResult) {
-    let session_ended = {
+///
+/// In a resumable session, a failed attempt interrupts the file instead
+/// ([FileStatusV2::Interrupted], [ServerEventV2::FileInterrupted]): the sender
+/// may continue at the committed offset.
+async fn finalize_file(v2: &V2State, session_id: &str, file_id: &str, outcome: SaveOutcome) {
+    let (session_ended, interrupted) = {
         let mut slot = v2.session.lock().await;
         let Some(SessionStateV2::Active(session)) = slot.as_mut() else {
             return;
@@ -712,25 +895,59 @@ async fn finalize_file(v2: &V2State, session_id: &str, file_id: &str, result: Sa
         if session.session_id != session_id {
             return;
         }
+        let resumable = session.resumable;
+        let mut interrupted = None;
         if let Some(file) = session.files.get_mut(file_id) {
             if file.status == FileStatusV2::InProgress {
-                file.status = match result {
-                    SaveResult::Success => FileStatusV2::Finished,
-                    SaveResult::HashMismatch if file.attempts < MAX_UPLOAD_ATTEMPTS => {
-                        FileStatusV2::Pending
-                    }
-                    SaveResult::Failed | SaveResult::HashMismatch => FileStatusV2::Failed,
+                let committed = match std::mem::take(&mut file.reset_pending) {
+                    true => 0,
+                    false => outcome.committed.min(file.dto.size),
                 };
+                match outcome.result {
+                    SaveResult::Success => {
+                        file.status = FileStatusV2::Finished;
+                        file.committed = file.dto.size;
+                    }
+                    SaveResult::HashMismatch if file.attempts < MAX_UPLOAD_ATTEMPTS => {
+                        // The received bytes are wrong: start over.
+                        file.status = FileStatusV2::Pending;
+                        file.committed = 0;
+                    }
+                    SaveResult::Failed if resumable => {
+                        file.status = FileStatusV2::Interrupted;
+                        file.committed = committed;
+                        // Only checksum mismatches are limited; a broken
+                        // connection is not the file's fault.
+                        file.attempts = file.attempts.saturating_sub(1);
+                        interrupted = Some(committed);
+                    }
+                    SaveResult::Failed | SaveResult::HashMismatch => {
+                        file.status = FileStatusV2::Failed;
+                    }
+                }
+                file.settled.notify_waiters();
             }
         }
         match session.is_complete() {
             true => {
                 *slot = None;
-                true
+                (true, interrupted)
             }
-            false => false,
+            false => (false, interrupted),
         }
     };
+
+    if let Some(committed) = interrupted {
+        tracing::info!("Upload of {file_id} interrupted at {committed} bytes");
+        let _ = v2
+            .event_tx
+            .send(ServerEventV2::FileInterrupted {
+                session_id: session_id.to_string(),
+                file_id: file_id.to_string(),
+                committed,
+            })
+            .await;
+    }
 
     if session_ended {
         tracing::info!("Upload session finished: {session_id}");
@@ -742,4 +959,59 @@ async fn finalize_file(v2: &V2State, session_id: &str, file_id: &str, result: Sa
             })
             .await;
     }
+}
+
+/// Ends the resumable session `session_id` once no upload has been running
+/// for [V2State::resume_idle_timeout], so a sender that never comes back
+/// does not block the receiver forever.
+fn spawn_idle_watchdog(v2: Arc<V2State>, session_id: String) {
+    tokio::spawn(async move {
+        let timeout = v2.resume_idle_timeout;
+        let tick = (timeout / 10).clamp(
+            std::time::Duration::from_millis(10),
+            std::time::Duration::from_secs(5),
+        );
+        let mut idle_since: Option<tokio::time::Instant> = None;
+        loop {
+            tokio::time::sleep(tick).await;
+            let expired = {
+                let mut slot = v2.session.lock().await;
+                let Some(SessionStateV2::Active(session)) = slot.as_mut() else {
+                    return;
+                };
+                if session.session_id != session_id {
+                    return;
+                }
+                if session.is_busy() {
+                    idle_since = None;
+                    false
+                } else if idle_since
+                    .get_or_insert_with(tokio::time::Instant::now)
+                    .elapsed()
+                    >= timeout
+                {
+                    for file in session.files.values_mut() {
+                        if matches!(file.status, FileStatusV2::Pending | FileStatusV2::Interrupted) {
+                            file.status = FileStatusV2::Failed;
+                        }
+                    }
+                    *slot = None;
+                    true
+                } else {
+                    false
+                }
+            };
+            if expired {
+                tracing::info!("Upload session {session_id} ended: the sender did not come back");
+                let _ = v2
+                    .event_tx
+                    .send(ServerEventV2::SessionEnd {
+                        session_id,
+                        reason: SessionEndReasonV2::IdleTimeout,
+                    })
+                    .await;
+                return;
+            }
+        }
+    });
 }

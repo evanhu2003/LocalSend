@@ -309,6 +309,9 @@ pub(super) fn cert_fingerprint_from_res(response: &Response) -> anyhow::Result<S
 #[derive(Serialize, Deserialize)]
 struct ErrorResponse {
     message: String,
+
+    #[serde(default)]
+    offset: Option<u64>,
 }
 
 pub struct ResultWithPublicKey<T> {
@@ -334,9 +337,9 @@ impl ResponseExt for Response {
     async fn into_error<T>(self) -> Result<T, ClientError> {
         let status = self.status().as_u16();
         let body = self.text().await.unwrap_or_default();
-        let message = match serde_json::from_str::<ErrorResponse>(&body) {
-            Ok(error) => error.message,
-            Err(_) => body,
+        let (message, offset) = match serde_json::from_str::<ErrorResponse>(&body) {
+            Ok(error) => (error.message, error.offset),
+            Err(_) => (body, None),
         };
         Err(ClientError::StatusCode(StatusCodeError {
             status,
@@ -345,6 +348,7 @@ impl ResponseExt for Response {
             } else {
                 Some(message)
             },
+            offset,
         }))
     }
 }

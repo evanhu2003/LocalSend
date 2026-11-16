@@ -3,6 +3,7 @@ use crate::http::client::url::{ApiVersion, TargetUrl};
 use crate::http::dto_v2::{
     InfoResponseDtoV2, PrepareDownloadResponseDtoV2, PrepareUploadRequestDtoV2,
     PrepareUploadResponseDtoV2, PrepareUploadResultV2, RegisterDtoV2, RegisterResponseDtoV2,
+    UploadOffsetResponseDtoV2,
 };
 use crate::model::discovery::ProtocolType;
 use futures_util::StreamExt;
@@ -242,17 +243,53 @@ impl LsHttpClientV2 {
         body: reqwest::Body,
         cancel: CancellationToken,
     ) -> Result<(), ClientError> {
+        self.upload_from_offset(
+            protocol, ip, port, public_key, session_id, file_id, token, 0, body, cancel,
+        )
+        .await
+    }
+
+    /// Uploads a file starting at `offset` (LocalSend fork extension, only
+    /// for sessions where the receiver announced `resumeSupport`): `body`
+    /// carries the bytes of the file from `offset` on.
+    ///
+    /// POST /api/localsend/v2/upload?sessionId=...&fileId=...&token=...&offset=...
+    ///
+    /// # Errors
+    /// Like [LsHttpClientV2::upload], plus 409 "Offset mismatch" with the
+    /// expected offset in [crate::http::StatusCodeError::offset].
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upload_from_offset(
+        &self,
+        protocol: ProtocolType,
+        ip: &str,
+        port: u16,
+        public_key: Option<String>,
+        session_id: &str,
+        file_id: &str,
+        token: &str,
+        offset: u64,
+        body: reqwest::Body,
+        cancel: CancellationToken,
+    ) -> Result<(), ClientError> {
+        let offset = offset.to_string();
+        let mut params = vec![
+            ("sessionId", session_id),
+            ("fileId", file_id),
+            ("token", token),
+        ];
+        // Official receivers do not know the parameter; it is only sent when
+        // resuming.
+        if offset != "0" {
+            params.push(("offset", offset.as_str()));
+        }
         let url = TargetUrl {
             version: ApiVersion::V2,
             protocol: protocol.as_str(),
             host: ip.to_string(),
             port,
             path: "/upload",
-            params: &[
-                ("sessionId", session_id),
-                ("fileId", file_id),
-                ("token", token),
-            ],
+            params: &params,
         }
         .to_string();
 
@@ -270,6 +307,53 @@ impl LsHttpClientV2 {
         }
 
         Ok(())
+    }
+
+    /// Asks the receiver how many bytes of a file it holds (LocalSend fork
+    /// extension, only for sessions where the receiver announced
+    /// `resumeSupport`). An upload of the file that is still running on the
+    /// receiver is aborted first.
+    ///
+    /// POST /api/localsend/v2/upload-offset?sessionId=...&fileId=...&token=...
+    ///
+    /// # Errors
+    /// * 403 - Invalid token, session or certificate (e.g. the session ended)
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upload_offset(
+        &self,
+        protocol: ProtocolType,
+        ip: &str,
+        port: u16,
+        public_key: Option<String>,
+        session_id: &str,
+        file_id: &str,
+        token: &str,
+    ) -> Result<u64, ClientError> {
+        let url = TargetUrl {
+            version: ApiVersion::V2,
+            protocol: protocol.as_str(),
+            host: ip.to_string(),
+            port,
+            path: "/upload-offset",
+            params: &[
+                ("sessionId", session_id),
+                ("fileId", file_id),
+                ("token", token),
+            ],
+        }
+        .to_string();
+
+        let res = self.client.post(&url).send().await?;
+
+        if protocol == ProtocolType::Https {
+            super::verify_cert_from_res(&res, public_key)?;
+        }
+
+        if res.status() != StatusCode::OK {
+            return res.into_error().await;
+        }
+
+        Ok(res.json::<UploadOffsetResponseDtoV2>().await?.offset)
     }
 
     /// Cancels an ongoing file transfer session.

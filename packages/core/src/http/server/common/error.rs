@@ -15,6 +15,10 @@ pub enum AppError {
 
     #[error("{0}: {1}")]
     Message(StatusCode, String),
+
+    /// 409: an upload did not start at the offset the receiver holds.
+    #[error("Offset mismatch, expected {0}")]
+    OffsetMismatch(u64),
 }
 
 impl AppError {
@@ -24,21 +28,36 @@ impl AppError {
                 status: StatusCode::INTERNAL_SERVER_ERROR,
                 body: ErrorResponse {
                     message: "Internal server error".to_string(),
+                    offset: None,
                 },
             },
             AppError::Status(code) => JsonResponse {
                 status: code,
                 body: ErrorResponse {
                     message: format!("Status code: {code}"),
+                    offset: None,
                 },
             },
             AppError::BadRequest(message) => JsonResponse {
                 status: StatusCode::BAD_REQUEST,
-                body: ErrorResponse { message },
+                body: ErrorResponse {
+                    message,
+                    offset: None,
+                },
             },
             AppError::Message(status, message) => JsonResponse {
                 status,
-                body: ErrorResponse { message },
+                body: ErrorResponse {
+                    message,
+                    offset: None,
+                },
+            },
+            AppError::OffsetMismatch(offset) => JsonResponse {
+                status: StatusCode::CONFLICT,
+                body: ErrorResponse {
+                    message: "Offset mismatch".to_string(),
+                    offset: Some(offset),
+                },
             },
         };
 

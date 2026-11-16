@@ -71,6 +71,7 @@ async fn start_register_server(
         },
         None,
         Some(ServerConfigV2 {
+            resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin: None,
             verify_checksums: true,
             event_tx,

@@ -23,6 +23,11 @@ pub struct NonceResponse {
 pub struct ErrorResponse {
     /// The error message.
     pub message: String,
+
+    /// LocalSend fork extension: on 409 "Offset mismatch", the offset the
+    /// upload of the file must start at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

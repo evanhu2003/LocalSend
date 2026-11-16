@@ -1,6 +1,8 @@
 use crate::http::server::PeerIp;
 use crate::model::transfer::FileDto;
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 /// State of the single v2 upload session slot.
@@ -44,6 +46,23 @@ pub(crate) struct UploadSessionV2 {
 }
 
 impl UploadSessionV2 {
+    /// Whether the client may upload to (or query, or cancel) this session.
+    ///
+    /// Resumable sessions are bound to the sender's certificate, so the
+    /// sender may come back from another address; other sessions are bound
+    /// to the sender's address.
+    pub(crate) fn authorizes(&self, ip: &PeerIp, cert_fingerprint: Option<&str>) -> bool {
+        match self.resumable {
+            true => self.sender_cert_fingerprint.as_deref().is_some_and(|f| Some(f) == cert_fingerprint),
+            false => self.sender_ip == *ip,
+        }
+    }
+
+    /// Whether an upload request is currently running.
+    pub(crate) fn is_busy(&self) -> bool {
+        self.files.values().any(|file| file.status == FileStatusV2::InProgress)
+    }
+
     /// Whether all files reached a final state.
     pub(crate) fn is_complete(&self) -> bool {
         self.files
@@ -69,12 +88,43 @@ pub(crate) struct SessionFileV2 {
     /// offset the next upload of this file must start at. Always 0 unless the
     /// session is resumable.
     pub(crate) committed: u64,
+
+    /// Cancelled to stop the running upload of this file (replaced for every
+    /// attempt), e.g. when the sender reconnects while the old request is
+    /// still open.
+    pub(crate) abort: CancellationToken,
+
+    /// Notified whenever an upload attempt of this file ended.
+    pub(crate) settled: Arc<Notify>,
+
+    /// The application discarded the received part while an upload was
+    /// running: the attempt must not report its bytes as committed.
+    pub(crate) reset_pending: bool,
+}
+
+impl SessionFileV2 {
+    pub(crate) fn new(dto: FileDto, committed: u64) -> Self {
+        Self {
+            dto,
+            token: uuid::Uuid::new_v4().to_string(),
+            status: FileStatusV2::Pending,
+            attempts: 0,
+            committed,
+            abort: CancellationToken::new(),
+            settled: Arc::new(Notify::new()),
+            reset_pending: false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum FileStatusV2 {
     Pending,
     InProgress,
+
+    /// An upload of a resumable session broke off; the sender may continue
+    /// at [SessionFileV2::committed].
+    Interrupted,
     Finished,
     Failed,
 }

@@ -181,6 +181,7 @@ fn handle_server_event(
         // No receive session is ever accepted; dropping the responders
         // rejects the requests.
         ServerEventV2::FileUpload { .. }
+        | ServerEventV2::FileInterrupted { .. }
         | ServerEventV2::SessionEnd { .. }
         | ServerEventV2::PrepareUploadAborted { .. } => {}
     }

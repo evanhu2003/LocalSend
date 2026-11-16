@@ -205,8 +205,12 @@ impl App {
                 session_id,
                 file_id,
                 file,
+                offset,
                 target_tx,
-            } => self.handle_file_upload(session_id, file_id, file, target_tx),
+            } => self.handle_file_upload(session_id, file_id, file, offset, target_tx),
+            // A resumed upload continues the same file; the summary only
+            // counts the final result.
+            ServerEventV2::FileInterrupted { .. } => {}
             ServerEventV2::SessionEnd { session_id, reason } => {
                 let Some(session) = self
                     .receive
@@ -255,6 +259,7 @@ impl App {
         session_id: String,
         file_id: String,
         file: FileDto,
+        offset: u64,
         target_tx: oneshot::Sender<FileUploadTarget>,
     ) {
         let Some(session) = self
@@ -300,7 +305,8 @@ impl App {
 
         let _ = target_tx.send(FileUploadTarget::Path {
             path,
-            offset: 0,
+            // A resumed upload continues the part received before.
+            offset,
             result_tx,
             progress_tx: Some(progress_tx),
         });
@@ -377,6 +383,17 @@ impl App {
                     Category::Receive,
                     &format!(
                         "{}: Cancelled by sender ({} of {} files received)",
+                        session.alias,
+                        session.finished_files,
+                        session.files.len(),
+                    ),
+                );
+            }
+            SessionEndReasonV2::IdleTimeout | SessionEndReasonV2::Superseded => {
+                self.ui.log(
+                    Category::Receive,
+                    &format!(
+                        "{}: Sender did not finish ({} of {} files received)",
                         session.alias,
                         session.finished_files,
                         session.files.len(),

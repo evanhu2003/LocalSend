@@ -11,4 +11,8 @@ pub mod state;
 pub struct StatusCodeError {
     pub status: u16,
     pub message: Option<String>,
+
+    /// LocalSend fork extension: on 409 "Offset mismatch", the offset the
+    /// receiver expects the upload to start at.
+    pub offset: Option<u64>,
 }

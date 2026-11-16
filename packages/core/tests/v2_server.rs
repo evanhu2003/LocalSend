@@ -119,6 +119,7 @@ async fn start_test_server_with_verification(
                     ServerEventV2::PrepareUploadAborted { .. } => {}
                     ServerEventV2::CancelReceived { .. } => {}
                     ServerEventV2::ListenerFailed { .. } => {}
+                    ServerEventV2::FileInterrupted { .. } => {}
                 }
             }
         }
@@ -139,6 +140,7 @@ async fn start_test_server_with_verification(
         },
         None,
         Some(ServerConfigV2 {
+            resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin,
             verify_checksums,
             event_tx,
@@ -1041,6 +1043,7 @@ async fn test_prepare_upload_aborted_by_sender_disconnect() {
         },
         None,
         Some(ServerConfigV2 {
+            resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin: None,
             verify_checksums: true,
             event_tx,
@@ -1143,6 +1146,7 @@ async fn test_prepare_upload_cancelled_by_session_less_cancel() {
         },
         None,
         Some(ServerConfigV2 {
+            resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin: None,
             verify_checksums: true,
             event_tx,
@@ -1278,6 +1282,7 @@ async fn test_prepare_upload_aborted_by_sender_disconnect_tls() {
         },
         None,
         Some(ServerConfigV2 {
+            resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin: None,
             verify_checksums: true,
             event_tx,
@@ -1396,6 +1401,7 @@ async fn test_prepare_upload_normalizes_file_names_to_nfc() {
         },
         None,
         Some(ServerConfigV2 {
+            resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin: None,
             verify_checksums: true,
             event_tx,

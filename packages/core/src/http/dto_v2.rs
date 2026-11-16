@@ -131,6 +131,17 @@ pub struct PrepareUploadResponseDtoV2 {
     pub resume_offsets: HashMap<String, u64>,
 }
 
+/// Response of `POST /api/localsend/v2/upload-offset` (LocalSend fork
+/// extension, [RESUME_SUPPORT_VERSION]).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadOffsetResponseDtoV2 {
+    /// The number of bytes of the file the receiver holds durably: the next
+    /// upload of the file must start here. Equals the file size when the
+    /// file is complete.
+    pub offset: u64,
+}
+
 pub struct PrepareUploadResultV2 {
     pub status_code: u16,
     pub response: Option<PrepareUploadResponseDtoV2>,

@@ -43,12 +43,21 @@ pub struct ServerConfigV2 {
 
     /// Whether the SHA-256 checksums that senders provide for their files are
     /// verified after receiving. When disabled, received files are not hashed
-    /// and a mismatch is not detected.
+    /// and a mismatch is not detected. Resumed files are always verified.
     pub verify_checksums: bool,
+
+    /// How long a resumable session waits for its sender to come back while
+    /// no upload is running, see [DEFAULT_RESUME_IDLE_TIMEOUT].
+    pub resume_idle_timeout: std::time::Duration,
 
     /// Channel on which the server emits events that must be handled by the application.
     pub event_tx: mpsc::Sender<ServerEventV2>,
 }
+
+/// After this long without a running upload, a resumable session ends
+/// ([v2::SessionEndReasonV2::IdleTimeout]), freeing the slot for others.
+/// Senders retry for the same duration.
+pub const DEFAULT_RESUME_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// Runtime state of the v2 protocol endpoints.
 pub(crate) struct V2State {
@@ -57,6 +66,9 @@ pub(crate) struct V2State {
 
     /// Whether sender-provided SHA-256 checksums are verified after receiving.
     pub(crate) verify_checksums: bool,
+
+    /// See [ServerConfigV2::resume_idle_timeout].
+    pub(crate) resume_idle_timeout: std::time::Duration,
 
     /// Channel on which server events are emitted to the application.
     pub(crate) event_tx: mpsc::Sender<ServerEventV2>,
@@ -103,6 +115,7 @@ impl AppState {
             Arc::new(V2State {
                 pin: config.pin,
                 verify_checksums: config.verify_checksums,
+                resume_idle_timeout: config.resume_idle_timeout,
                 event_tx: config.event_tx,
                 session: Mutex::new(None),
                 pin_attempts: Mutex::new(LruCache::new(NonZeroUsize::new(200).unwrap())),
@@ -210,6 +223,35 @@ impl ServerHandle {
             }
             _ => false,
         }
+    }
+}
+
+impl ServerHandle {
+    /// Discards what the receiver holds of a file of a resumable session,
+    /// e.g. because the application could not open the partial file again:
+    /// the next upload of the file starts at 0.
+    ///
+    /// Returns `true` when the file was found.
+    pub async fn reset_v2_file(&self, session_id: &str, file_id: &str) -> bool {
+        let Some(v2) = &self.v2 else {
+            return false;
+        };
+        let mut slot = v2.session.lock().await;
+        let Some(SessionStateV2::Active(session)) = slot.as_mut() else {
+            return false;
+        };
+        if session.session_id != session_id {
+            return false;
+        }
+        let Some(file) = session.files.get_mut(file_id) else {
+            return false;
+        };
+        file.committed = 0;
+        if file.status == common::session::FileStatusV2::InProgress {
+            // The running attempt ends later; it must not restore its bytes.
+            file.reset_pending = true;
+        }
+        true
     }
 }
 
@@ -664,6 +706,13 @@ async fn handle_request_inner(mut req: Request<Incoming>) -> Result<Response<Box
             }
 
             v2::upload(req, state, client_info).await
+        }
+        (&Method::POST, "/api/localsend/v2/upload-offset") => {
+            if !v2_enabled {
+                return Err(AppError::Status(StatusCode::NOT_FOUND));
+            }
+
+            v2::upload_offset(req, state, client_info).await
         }
         (&Method::POST, "/api/localsend/v2/cancel") => {
             if !v2_enabled {

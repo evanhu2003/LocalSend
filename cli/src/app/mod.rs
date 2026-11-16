@@ -133,6 +133,7 @@ async fn start_network(identity: &Arc<storage::Identity>) -> anyhow::Result<Netw
         identity.client_info(),
         None,
         Some(ServerConfigV2 {
+            resume_idle_timeout: localsend::http::server::DEFAULT_RESUME_IDLE_TIMEOUT,
             pin: None,
             verify_checksums: true,
             event_tx: server_tx.clone(),
