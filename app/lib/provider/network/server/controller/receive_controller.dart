@@ -107,6 +107,7 @@ class ReceiveController {
                 path: null,
                 savedToGallery: false,
                 errorMessage: null,
+                resumeOffset: event.resumeOffsets[file.id] ?? 0,
               ),
           },
           startTime: null,
@@ -190,6 +191,7 @@ class ReceiveController {
         sender: session?.sender ?? Device.empty,
         showSenderInfo: true,
         files: session?.files.values.map((f) => f.file).toList() ?? [],
+        resumePercent: _resumePercent(session?.files.values),
         message: message,
         onAccept: () async {
           if (message != null) {
@@ -256,7 +258,8 @@ class ReceiveController {
       return;
     }
 
-    // begin of actual file transfer
+    // begin of actual file transfer (or its continuation after an interruption)
+    _setInterrupted(event.sessionId, fileId, false);
     server.ref.notifier(fileTransferProvider).setStatus(sessionId: event.sessionId, fileId: fileId, status: FileStatus.sending);
     if (receiveState.startTime == null || receiveState.status != SessionStatus.sending) {
       server.setState(
@@ -278,6 +281,43 @@ class ReceiveController {
       return;
     }
     _logger.info('Receiving ${event.fileId} was interrupted at ${event.committed} bytes, waiting for the sender');
+    _setInterrupted(event.sessionId, event.fileId, true);
+  }
+
+  void _setInterrupted(String sessionId, String fileId, bool interrupted) {
+    server.setState((oldState) {
+      final session = oldState?.session;
+      final file = session?.files[fileId];
+      if (session == null || session.sessionId != sessionId || file == null || file.interrupted == interrupted) {
+        return oldState;
+      }
+      return oldState!.copyWith(
+        session: session.copyWith(
+          files: {
+            ...session.files,
+            fileId: file.copyWith(interrupted: interrupted),
+          },
+        ),
+      );
+    });
+  }
+
+  /// How far the files of a request are received already (resumed transfers),
+  /// in percent, or `null` when nothing is resumed.
+  static int? _resumePercent(Iterable<ReceivingFile>? files) {
+    if (files == null) {
+      return null;
+    }
+    var resumed = 0;
+    var total = 0;
+    for (final file in files) {
+      resumed += file.resumeOffset;
+      total += file.file.size;
+    }
+    if (resumed == 0 || total == 0) {
+      return null;
+    }
+    return (resumed * 100 / total).floor();
   }
 
   /// The receive progress of a file reported by the server isolate.
@@ -568,6 +608,7 @@ class ReceiveController {
                     path: null,
                     savedToGallery: false,
                     errorMessage: null,
+                    resumeOffset: entry.resumeOffset,
                   ),
                 );
               }),

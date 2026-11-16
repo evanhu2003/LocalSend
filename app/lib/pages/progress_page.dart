@@ -364,6 +364,14 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
                   errorMessage = null;
                 }
 
+                // A broken connection of a resumable transfer: shown instead of the progress bar.
+                final reconnectAttempt = sendSession?.files[file.id]?.reconnectAttempt;
+                final String? reconnectNotice = reconnectAttempt != null
+                    ? t.progressPage.reconnecting(n: reconnectAttempt)
+                    : (receiveSession?.files[file.id]?.interrupted ?? false)
+                    ? t.progressPage.waitingForReconnect
+                    : null;
+
                 final Uint8List? thumbnail;
                 final AssetEntity? asset;
                 if (sendSession != null) {
@@ -420,7 +428,14 @@ class _ProgressPageState extends State<ProgressPage> with Refena {
                                   ],
                                 ),
                               const SizedBox(height: 5),
-                              if (fileStatus == FileStatus.sending)
+                              if (fileStatus == FileStatus.sending && reconnectNotice != null)
+                                Text(
+                                  reconnectNotice,
+                                  style: TextStyle(color: Theme.of(context).colorScheme.warning, height: 1),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                )
+                              else if (fileStatus == FileStatus.sending)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 5),
                                   child: CustomProgressBar(

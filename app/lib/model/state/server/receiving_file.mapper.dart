@@ -43,6 +43,20 @@ class ReceivingFileMapper extends ClassMapperBase<ReceivingFile> {
     'errorMessage',
     _$errorMessage,
   );
+  static int _$resumeOffset(ReceivingFile v) => v.resumeOffset;
+  static const Field<ReceivingFile, int> _f$resumeOffset = Field(
+    'resumeOffset',
+    _$resumeOffset,
+    opt: true,
+    def: 0,
+  );
+  static bool _$interrupted(ReceivingFile v) => v.interrupted;
+  static const Field<ReceivingFile, bool> _f$interrupted = Field(
+    'interrupted',
+    _$interrupted,
+    opt: true,
+    def: false,
+  );
 
   @override
   final MappableFields<ReceivingFile> fields = const {
@@ -52,6 +66,8 @@ class ReceivingFileMapper extends ClassMapperBase<ReceivingFile> {
     #path: _f$path,
     #savedToGallery: _f$savedToGallery,
     #errorMessage: _f$errorMessage,
+    #resumeOffset: _f$resumeOffset,
+    #interrupted: _f$interrupted,
   };
 
   static ReceivingFile _instantiate(DecodingData data) {
@@ -62,6 +78,8 @@ class ReceivingFileMapper extends ClassMapperBase<ReceivingFile> {
       path: data.dec(_f$path),
       savedToGallery: data.dec(_f$savedToGallery),
       errorMessage: data.dec(_f$errorMessage),
+      resumeOffset: data.dec(_f$resumeOffset),
+      interrupted: data.dec(_f$interrupted),
     );
   }
 
@@ -134,6 +152,8 @@ abstract class ReceivingFileCopyWith<$R, $In extends ReceivingFile, $Out>
     String? path,
     bool? savedToGallery,
     String? errorMessage,
+    int? resumeOffset,
+    bool? interrupted,
   });
   ReceivingFileCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(Then<$Out2, $R2> t);
 }
@@ -154,6 +174,8 @@ class _ReceivingFileCopyWithImpl<$R, $Out>
     Object? path = $none,
     bool? savedToGallery,
     Object? errorMessage = $none,
+    int? resumeOffset,
+    bool? interrupted,
   }) => $apply(
     FieldCopyWithData({
       if (file != null) #file: file,
@@ -162,6 +184,8 @@ class _ReceivingFileCopyWithImpl<$R, $Out>
       if (path != $none) #path: path,
       if (savedToGallery != null) #savedToGallery: savedToGallery,
       if (errorMessage != $none) #errorMessage: errorMessage,
+      if (resumeOffset != null) #resumeOffset: resumeOffset,
+      if (interrupted != null) #interrupted: interrupted,
     }),
   );
   @override
@@ -172,6 +196,8 @@ class _ReceivingFileCopyWithImpl<$R, $Out>
     path: data.get(#path, or: $value.path),
     savedToGallery: data.get(#savedToGallery, or: $value.savedToGallery),
     errorMessage: data.get(#errorMessage, or: $value.errorMessage),
+    resumeOffset: data.get(#resumeOffset, or: $value.resumeOffset),
+    interrupted: data.get(#interrupted, or: $value.interrupted),
   );
 
   @override

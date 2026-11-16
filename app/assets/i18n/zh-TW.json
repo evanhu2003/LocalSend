@@ -236,7 +236,8 @@
     },
     "subTitleMessage": "已傳送一則訊息給您：",
     "subTitleLink": "已傳送一個連結給您：",
-    "canceled": "傳送者已取消要求。"
+    "canceled": "傳送者已取消要求。",
+    "resumeFrom": "將從 {percent}% 接續"
   },
   "receiveOptionsPage": {
     "title": "選項",
@@ -276,7 +277,9 @@
       },
       "minutes": "{m}:{ss}",
       "hours": "@:.hoursUnit @:.minutesUnit"
-    }
+    },
+    "reconnecting": "重新連線中…（第 {n} 次）",
+    "waitingForReconnect": "等待對方重新連線…"
   },
   "webSharePage": {
     "title": "透過連結分享",

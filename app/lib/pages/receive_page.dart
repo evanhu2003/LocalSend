@@ -34,6 +34,10 @@ class ReceivePageVm {
   /// Show verify button and device model.
   final bool showSenderInfo;
   final List<FileDto> files;
+
+  /// How much of the files was received in an earlier, interrupted transfer
+  /// (percent), or `null`.
+  final int? resumePercent;
   final String? message;
   final bool isLink;
   final void Function() onAccept;
@@ -45,6 +49,7 @@ class ReceivePageVm {
     required this.sender,
     required this.showSenderInfo,
     required this.files,
+    this.resumePercent,
     required this.message,
     required this.onAccept,
     required this.onDecline,
@@ -166,6 +171,12 @@ class _ReceivePageState extends State<ReceivePage> with Refena {
                                         style: smallUi ? null : Theme.of(context).textTheme.titleLarge,
                                         textAlign: TextAlign.center,
                                       ),
+                                      if (vm.resumePercent != null && vm.message == null)
+                                        Text(
+                                          t.receivePage.resumeFrom(percent: vm.resumePercent!),
+                                          style: Theme.of(context).textTheme.bodySmall,
+                                          textAlign: TextAlign.center,
+                                        ),
                                       if (vm.showSenderInfo && vm.message == null)
                                         Padding(
                                           padding: const EdgeInsets.only(top: 8),

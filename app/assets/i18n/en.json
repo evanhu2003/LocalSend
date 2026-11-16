@@ -238,7 +238,8 @@
     },
     "subTitleMessage": "sent you a message:",
     "subTitleLink": "sent you a link:",
-    "canceled": "The sender has canceled the request."
+    "canceled": "The sender has canceled the request.",
+    "resumeFrom": "Resumes from {percent}%"
   },
   "receiveOptionsPage": {
     "title": "Options",
@@ -278,7 +279,9 @@
       },
       "minutes": "{m}:{ss}",
       "hours": "@:.hoursUnit @:.minutesUnit"
-    }
+    },
+    "reconnecting": "Reconnecting… (attempt {n})",
+    "waitingForReconnect": "Waiting for the sender to reconnect…"
   },
   "webSharePage": {
     "title": "Share via link",

@@ -399,6 +399,8 @@ class Translations$receivePage$zh_TW extends Translations$receivePage$en {
   String get subTitleLink => '已傳送一個連結給您：';
   @override
   String get canceled => '傳送者已取消要求。';
+  @override
+  String resumeFrom({required Object percent}) => '將從 ${percent}% 接續';
 }
 
 // Path: receiveOptionsPage
@@ -456,6 +458,10 @@ class Translations$progressPage$zh_TW extends Translations$progressPage$en {
   late final Translations$progressPage$total$zh_TW total = Translations$progressPage$total$zh_TW.internal(_root);
   @override
   late final Translations$progressPage$remainingTime$zh_TW remainingTime = Translations$progressPage$remainingTime$zh_TW.internal(_root);
+  @override
+  String reconnecting({required Object n}) => '重新連線中…（第 ${n} 次）';
+  @override
+  String get waitingForReconnect => '等待對方重新連線…';
 }
 
 // Path: webSharePage

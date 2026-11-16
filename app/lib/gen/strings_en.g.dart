@@ -452,6 +452,9 @@ class Translations$receivePage$en {
 
   /// en: 'The sender has canceled the request.'
   String get canceled => 'The sender has canceled the request.';
+
+  /// en: 'Resumes from {percent}%'
+  String resumeFrom({required Object percent}) => 'Resumes from ${percent}%';
 }
 
 // Path: receiveOptionsPage
@@ -521,6 +524,12 @@ class Translations$progressPage$en {
 
   late final Translations$progressPage$total$en total = Translations$progressPage$total$en.internal(_root);
   late final Translations$progressPage$remainingTime$en remainingTime = Translations$progressPage$remainingTime$en.internal(_root);
+
+  /// en: 'Reconnecting… (attempt {n})'
+  String reconnecting({required Object n}) => 'Reconnecting… (attempt ${n})';
+
+  /// en: 'Waiting for the sender to reconnect…'
+  String get waitingForReconnect => 'Waiting for the sender to reconnect…';
 }
 
 // Path: webSharePage
