@@ -26,9 +26,9 @@
     </div>
   </header>
 
+  <!-- 窄視窗：裝置 → 傳送 → 接收 單欄；寬視窗：裝置在頂部一排，下方 傳送｜中間軌道｜接收 -->
   <main class="grid">
-    <!-- 左欄：裝置 + 傳送 -->
-    <section class="card" aria-labelledby="devTitle">
+    <section id="devCard" class="card" aria-labelledby="devTitle">
       <div class="card-head">
         <h2 id="devTitle">附近的裝置</h2>
         <button id="scan" class="btn small ghost">重新掃描</button>
@@ -40,7 +40,7 @@
       <p id="tsStatus" class="ts-status muted small" hidden></p>
     </section>
 
-    <section class="card" aria-labelledby="sendTitle">
+    <section id="sendCard" class="card" aria-labelledby="sendTitle">
       <div class="card-head">
         <h2 id="sendTitle">傳送</h2>
         <div class="tabs" role="tablist">
@@ -52,6 +52,7 @@
       <div data-pane="files">
         <label id="drop" class="drop" for="picker">
           <input id="picker" type="file" multiple hidden>
+          <svg class="wide-only state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
           <strong>拖曳檔案到這裡</strong>
           <span>或點一下選擇檔案</span>
         </label>
@@ -66,7 +67,8 @@
         <textarea id="text" rows="4" placeholder="輸入要傳送的文字…"></textarea>
       </div>
 
-      <div class="send-row">
+      <!-- 窄視窗時「傳送」按鈕在這裡；寬視窗時由 app.js 移到中間軌道 -->
+      <div id="sendRow" class="send-row">
         <span id="target" class="muted">請先在上方選擇一台裝置</span>
         <button id="send" class="btn primary" disabled>傳送</button>
       </div>
@@ -74,8 +76,17 @@
       <ul id="jobs" class="jobs"></ul>
     </section>
 
-    <!-- 右欄：接收 -->
-    <section class="card" aria-labelledby="recvTitle">
+    <!-- 中間軌道（只在寬視窗顯示）：傳送目標、流動箭頭、傳送按鈕 -->
+    <div id="rail" class="rail">
+      <div id="railTarget" class="rail-target"></div>
+      <svg class="flow" viewBox="0 0 136 24" aria-hidden="true">
+        <line class="flow-line" x1="4" y1="12" x2="120" y2="12" />
+        <path class="flow-head" d="M116 5l9 7-9 7" />
+      </svg>
+      <div id="railSlot" class="rail-slot"></div>
+    </div>
+
+    <section id="recvCard" class="card" aria-labelledby="recvTitle">
       <div class="card-head">
         <h2 id="recvTitle">接收</h2>
         <button id="openFolder" class="btn small ghost">開啟資料夾</button>
@@ -84,7 +95,10 @@
       <div id="messages"></div>
       <p class="muted small">收件資料夾：<code id="recvDir"></code></p>
       <ul id="received" class="filelist received"></ul>
-      <p id="noReceived" class="empty">還沒有收到任何檔案。</p>
+      <p id="noReceived" class="empty">
+        <svg class="wide-only state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+        還沒有收到任何檔案
+      </p>
     </section>
   </main>
 

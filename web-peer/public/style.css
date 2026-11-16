@@ -78,17 +78,19 @@ textarea { resize: vertical; }
 .btn.danger { color: var(--danger); border-color: var(--danger); }
 .btn.ghost { background: transparent; }
 
+/* 版面：窄視窗單欄（裝置 → 傳送 → 接收）；960px 以上裝置在頂部一排，下方 傳送｜中間軌道｜接收。
+   內容置中並限制寬度，標題列內容與卡片左右對齊。斷點與 app.js 的 wideLayout 相同。 */
+:root { --page-max: 860px; --page-pad: 20px; --ease: cubic-bezier(.2, .7, .2, 1); }
+.topbar { padding-inline: max(var(--page-pad), calc((100% - var(--page-max)) / 2 + var(--page-pad))); }
 .grid {
-  display: grid; gap: 16px; padding: 16px 20px 40px;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-areas: "dev recv" "send recv";
-  align-items: start; max-width: 1200px; margin: 0 auto;
+  display: grid; gap: 16px; padding: 16px var(--page-pad) 40px;
+  grid-template-columns: minmax(0, 1fr);
+  max-width: var(--page-max); margin: 0 auto;
 }
-.grid > :nth-child(1) { grid-area: dev; }
-.grid > :nth-child(2) { grid-area: send; }
-.grid > :nth-child(3) { grid-area: recv; }
+.rail { display: none; }
 @media (max-width: 820px) {
-  .grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "dev" "send" "recv"; padding: 12px 16px 40px; }
+  :root { --page-pad: 16px; }
+  .grid { padding-top: 12px; }
   .alias-row input { width: 100%; }
 }
 
@@ -102,10 +104,16 @@ textarea { resize: vertical; }
 }
 .device:hover { border-color: var(--accent); }
 .device.selected { border-color: var(--accent); background: var(--accent-weak); box-shadow: inset 0 0 0 1px var(--accent); }
-.device .icon { font-size: 1.5rem; width: 32px; text-align: center; }
-.device .name { font-weight: 600; }
-.device .meta { color: var(--muted); font-size: .8rem; }
-.tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: .7rem; font-weight: 500; vertical-align: 1px; background: var(--accent-weak); color: var(--accent); }
+.dev-icon {
+  flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--bg); color: var(--muted); transition: background-color .2s var(--ease), color .2s var(--ease);
+}
+.dev-icon svg { width: 20px; height: 20px; }
+.device.selected .dev-icon { background: var(--accent); color: var(--card); }
+.device .dev-text { min-width: 0; }
+.device .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.device .meta { color: var(--muted); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag { display: inline-block; margin-top: 4px; padding: 0 6px; border-radius: 999px; font-size: .7rem; font-weight: 500; background: var(--accent-weak); color: var(--accent); }
 .ts-status { margin: 10px 0 0; }
 
 .tabs { display: flex; gap: 4px; background: var(--bg); padding: 3px; border-radius: 8px; }
@@ -160,3 +168,63 @@ textarea { resize: vertical; }
 .toast { background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 10px; font-size: .9rem; box-shadow: 0 4px 16px rgba(0,0,0,.2); max-width: 360px; }
 .toast.warn { background: var(--warn); color: #fff; }
 .toast.success { background: var(--ok); color: #fff; }
+
+/* ---------- 寬視窗版面與流動箭頭：放在最後，覆寫上面同層級的基本樣式 ---------- */
+.device .meta.short, .wide-only { display: none; }
+@media (min-width: 960px) {
+  :root { --page-max: 1280px; --page-pad: 24px; }
+  /* 傳送／接收兩欄填滿視窗剩下的高度，不在下方留一大片空白 */
+  body { display: flex; flex-direction: column; }
+  .grid {
+    flex: 1; width: 100%;
+    padding-top: 24px; column-gap: 16px; row-gap: 16px; align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) 168px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "dev dev dev" "send rail recv";
+  }
+  #sendCard, #recvCard { display: flex; flex-direction: column; }
+  #sendCard [data-pane] { flex: 1; display: flex; flex-direction: column; }
+  #sendCard [data-pane][hidden] { display: none; }
+  .drop { flex: 1; min-height: 160px; align-content: center; gap: 4px; }
+  #text { flex: 1; min-height: 160px; }
+  #noReceived { margin: auto; display: grid; justify-items: center; gap: 12px; text-align: center; }
+  #noReceived[hidden] { display: none; }
+  .wide-only { display: block; }
+  .state-icon { width: 32px; height: 32px; color: var(--muted); margin-bottom: 8px; }
+  #noReceived .state-icon { margin-bottom: 0; }
+  #devCard { grid-area: dev; }
+  #sendCard { grid-area: send; }
+  #rail { grid-area: rail; }
+  #recvCard { grid-area: recv; }
+  #sendRow { display: none; }
+
+  /* 裝置：一排圖示卡片 */
+  .devices { display: flex; flex-wrap: wrap; gap: 12px; }
+  .device { flex-direction: column; gap: 10px; width: 160px; padding: 16px 12px 12px; text-align: center; }
+  .device .dev-icon { width: 56px; height: 56px; }
+  .device .dev-icon svg { width: 28px; height: 28px; }
+  .device .dev-text { width: 100%; }
+  .device .meta.full { display: none; }
+  .device .meta.short { display: block; }
+  .device .tag { margin: 6px 0 0; }
+
+  /* 中間軌道 */
+  .rail { display: flex; flex-direction: column; justify-content: center; gap: 16px; text-align: center; }
+  .rail-target { display: grid; justify-items: center; gap: 8px; min-height: 104px; align-content: end; }
+  .rail-target .label { font-size: .8rem; color: var(--muted); }
+  .rail-target .dev-icon { width: 48px; height: 48px; background: var(--card); border: 1px solid var(--line); }
+  .rail.ready .rail-target .dev-icon, .rail.sending .rail-target .dev-icon { color: var(--accent); border-color: var(--accent); }
+  .rail-target .dev-icon svg { width: 24px; height: 24px; }
+  .rail-target .name { font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rail-slot .btn { width: 100%; padding: 10px 16px; }
+}
+
+/* 流動箭頭：沒有目標時靜止；可以送時沿傳送方向流動；傳送中流得更快 */
+.flow { display: block; width: 100%; height: 24px; overflow: visible; }
+.flow-line { stroke: var(--line); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 2 10; transition: stroke .2s var(--ease); }
+.flow-head { fill: none; stroke: var(--line); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: stroke .2s var(--ease); }
+.rail.ready .flow-line, .rail.sending .flow-line, .rail.ready .flow-head, .rail.sending .flow-head { stroke: var(--accent); }
+.rail.ready .flow-line, .rail.sending .flow-line { animation: flow 1.2s linear infinite; }
+.rail.sending .flow-line { animation-duration: .5s; }
+@keyframes flow { to { stroke-dashoffset: -24; } }
+@media (prefers-reduced-motion: reduce) { .rail .flow-line { animation: none; } }

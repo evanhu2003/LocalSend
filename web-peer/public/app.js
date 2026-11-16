@@ -34,8 +34,20 @@ function fmtTime(ms) {
 function bar(frac, fail) {
   return el('div', { class: 'bar' + (fail ? ' fail' : '') }, el('div', { style: `width:${Math.max(0, Math.min(1, frac)) * 100}%` }));
 }
+// 線條圖示（路徑取自 Lucide，ISC 授權）；內容是固定字串，不含任何外部資料
+const ICON_PATHS = {
+  monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+  server: '<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>',
+  cpu: '<rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/>',
+  smartphone: '<rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/>',
+};
 function deviceIcon(t) {
-  return { mobile: '⌚', desktop: '🖥', web: '🌐', headless: '⚙', server: '🗄' }[t] ?? '📱';
+  // 手機和手錶回報的 deviceType 都是 mobile，協定裡分不出來，一律用手機圖示
+  const name = { mobile: 'smartphone', desktop: 'monitor', web: 'globe', headless: 'cpu', server: 'server' }[t] ?? 'smartphone';
+  const tpl = document.createElement('template');
+  tpl.innerHTML = `<span class="dev-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name]}</svg></span>`;
+  return tpl.content.firstChild;
 }
 
 async function api(method, url, body) {
@@ -90,6 +102,7 @@ function renderDevices() {
   if (selectedDevice && !state.devices.some((d) => d.fingerprint === selectedDevice)) selectedDevice = null;
   if (!selectedDevice && state.devices.length === 1) selectedDevice = state.devices[0].fingerprint;
   for (const d of state.devices) {
+    const meta = [d.deviceModel, `${d.ip}:${d.port}`, `#${d.fingerprint.slice(0, 6)}`].filter(Boolean).join(' · ');
     const li = el('li', {
       class: 'device' + (d.fingerprint === selectedDevice ? ' selected' : ''),
       tabindex: '0',
@@ -98,10 +111,12 @@ function renderDevices() {
       onclick: () => { selectedDevice = d.fingerprint; render(); },
       onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectedDevice = d.fingerprint; render(); } },
     },
-    el('span', { class: 'icon', 'aria-hidden': 'true' }, deviceIcon(d.deviceType)),
-    el('div', {},
-      el('div', { class: 'name' }, d.alias, d.tailscale ? el('span', { class: 'tag', title: '透過 Tailscale 連線' }, 'Tailscale') : null),
-      el('div', { class: 'meta' }, [d.deviceModel, `${d.ip}:${d.port}`, `#${d.fingerprint.slice(0, 6)}`].filter(Boolean).join(' · '))));
+    deviceIcon(d.deviceType),
+    el('div', { class: 'dev-text' },
+      el('div', { class: 'name', title: d.alias }, d.alias),
+      el('div', { class: 'meta full', title: meta }, meta),
+      el('div', { class: 'meta short', title: meta }, [d.deviceModel, d.ip].filter(Boolean).join(' · ')),
+      d.tailscale ? el('span', { class: 'tag', title: '透過 Tailscale 連線' }, 'Tailscale') : null));
     ul.append(li);
   }
   $('noDevices').hidden = state.devices.length > 0;
@@ -124,6 +139,13 @@ function renderSendState() {
     : $('text').value.trim().length > 0;
   $('send').disabled = !dev || !ready;
   $('send').textContent = staging ? '準備檔案中…' : '傳送';
+  // 中間軌道：有目標且可以送時箭頭開始流動，傳送中流得更快
+  const rail = $('rail');
+  rail.classList.toggle('ready', Boolean(dev && ready));
+  rail.classList.toggle('sending', Boolean(state?.sendJobs.some((j) => j.status === 'sending')));
+  $('railTarget').replaceChildren(...(dev
+    ? [el('span', { class: 'label' }, '傳送到'), deviceIcon(dev.deviceType), el('span', { class: 'name', title: dev.alias }, dev.alias)]
+    : [el('span', { class: 'label' }, state?.devices.length ? '在上方選擇一台裝置' : '尚未找到裝置')]));
   const total = selection.reduce((s, x) => s + x.file.size, 0);
   $('selSummary').textContent = selection.length ? `${selection.length} 個檔案，共 ${fmtSize(total)}` : '';
   $('clearSel').hidden = selection.length === 0;
@@ -381,6 +403,12 @@ $('decline').addEventListener('click', () => {
   const id = $('incoming').dataset.id;
   if (id) api('POST', `/api/incoming/${id}/decline`).catch((e) => toast(e.message, 'warn'));
 });
+
+// 寬視窗把「傳送」按鈕移到中間軌道，窄視窗放回傳送卡片底部（斷點與 style.css 相同）
+const wideLayout = matchMedia('(min-width: 960px)');
+const placeSendButton = () => (wideLayout.matches ? $('railSlot') : $('sendRow')).append($('send'));
+wideLayout.addEventListener('change', placeSendButton);
+placeSendButton();
 
 connect();
 loadReceived();
