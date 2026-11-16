@@ -486,9 +486,12 @@ pub(crate) async fn upload(
         target,
         file_size,
         expected_sha256.as_deref(),
+        false,
         timestamps,
+        CancellationToken::new(),
     )
-    .await;
+    .await
+    .result;
 
     upload_guard.finish(result).await;
 

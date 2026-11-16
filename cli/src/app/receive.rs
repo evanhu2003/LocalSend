@@ -7,7 +7,7 @@ use crate::sanitize;
 use crate::ui::Category;
 use crate::util::{self, SpeedMeter};
 use localsend::http::client::v2::LsHttpClientV2;
-use localsend::http::server::common::save::FileUploadTarget;
+use localsend::http::server::common::save::{FileUploadTarget, UploadProgress};
 use localsend::http::server::v2::{PrepareUploadDecisionV2, ServerEventV2, SessionEndReasonV2};
 use localsend::model::discovery::ProtocolType;
 use localsend::model::transfer::FileDto;
@@ -273,9 +273,9 @@ impl App {
             .in_progress
             .insert(file_id.clone(), progress.clone());
 
-        let (progress_tx, mut progress_rx) = mpsc::channel::<u64>(16);
+        let (progress_tx, mut progress_rx) = mpsc::channel::<UploadProgress>(16);
         tokio::spawn(async move {
-            while let Some(written) = progress_rx.recv().await {
+            while let Some(UploadProgress { written, .. }) = progress_rx.recv().await {
                 progress.store(written, Ordering::Relaxed);
             }
         });
@@ -300,6 +300,7 @@ impl App {
 
         let _ = target_tx.send(FileUploadTarget::Path {
             path,
+            offset: 0,
             result_tx,
             progress_tx: Some(progress_tx),
         });

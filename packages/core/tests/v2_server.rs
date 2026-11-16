@@ -100,6 +100,7 @@ async fn start_test_server_with_verification(
                                 let (result_tx, result_rx) = oneshot::channel();
                                 let _ = target_tx.send(FileUploadTarget::Path {
                                     path: path.clone(),
+                                    offset: 0,
                                     result_tx,
                                     progress_tx: None,
                                 });

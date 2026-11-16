@@ -3,7 +3,7 @@ use flutter_rust_bridge::frb;
 pub use localsend::http::dto_v2::RegisterDtoV2;
 use localsend::http::server::ServerConfigV2;
 pub use localsend::http::server::TlsConfig;
-use localsend::http::server::common::save::FileUploadTarget;
+use localsend::http::server::common::save::{FileUploadTarget, UploadProgress};
 use localsend::http::server::internal::{InternalConfig, InternalEvent};
 pub use localsend::http::server::v2::SessionEndReasonV2;
 use localsend::http::server::v2::{PrepareUploadDecisionV2, ServerEventV2};
@@ -536,11 +536,11 @@ impl RsHttpServer {
                 return Err(anyhow::anyhow!("No pending file upload for this file"));
             };
 
-            let (progress_tx, mut progress_rx) = mpsc::channel::<u64>(16);
+            let (progress_tx, mut progress_rx) = mpsc::channel::<UploadProgress>(16);
             let progress_sink = sink.clone();
             tokio::spawn(async move {
                 let mut last_emit = None::<std::time::Instant>;
-                while let Some(written) = progress_rx.recv().await {
+                while let Some(UploadProgress { written, .. }) = progress_rx.recv().await {
                     let now = std::time::Instant::now();
                     let is_final = written >= file_size;
                     if !is_final {
@@ -705,11 +705,12 @@ fn resolve_upload_target(
     path: Option<String>,
     file_descriptor: Option<i32>,
     result_tx: oneshot::Sender<Result<(), String>>,
-    progress_tx: mpsc::Sender<u64>,
+    progress_tx: mpsc::Sender<UploadProgress>,
 ) -> anyhow::Result<FileUploadTarget> {
     match (path, file_descriptor) {
         (Some(path), None) => Ok(FileUploadTarget::Path {
             path: path.into(),
+            offset: 0,
             result_tx,
             progress_tx: Some(progress_tx),
         }),
@@ -718,6 +719,7 @@ fn resolve_upload_target(
             {
                 Ok(FileUploadTarget::Fd {
                     fd: file_descriptor,
+                    offset: 0,
                     result_tx,
                     progress_tx: Some(progress_tx),
                 })
