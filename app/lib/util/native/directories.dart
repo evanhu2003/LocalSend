@@ -43,3 +43,14 @@ Future<String> getCacheDirectory() async {
   await dir.create(recursive: true);
   return dir.path;
 }
+
+/// Where the partially received files of resumable transfers are recorded,
+/// or `null` when the application support directory is unavailable.
+Future<String?> getResumeRegistryPath() async {
+  try {
+    final support = await path.getApplicationSupportDirectory();
+    return '${support.path}${Platform.pathSeparator}resume${Platform.pathSeparator}partials.json';
+  } catch (_) {
+    return null;
+  }
+}

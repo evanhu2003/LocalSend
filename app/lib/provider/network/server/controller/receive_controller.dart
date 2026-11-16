@@ -270,6 +270,16 @@ class ReceiveController {
     }
   }
 
+  /// The upload of a file of a resumable transfer broke off; the sender may
+  /// reconnect and continue it, so the file is still being received.
+  void onFileInterrupted(HttpServerFileInterruptedEvent event) {
+    final receiveState = server.getStateOrNull()?.session;
+    if (receiveState == null || receiveState.sessionId != event.sessionId) {
+      return;
+    }
+    _logger.info('Receiving ${event.fileId} was interrupted at ${event.committed} bytes, waiting for the sender');
+  }
+
   /// The receive progress of a file reported by the server isolate.
   void onFileUploadProgress(HttpServerFileUploadProgressEvent event) {
     final receiveState = server.getStateOrNull()?.session;

@@ -313,11 +313,16 @@ class IsolateHttpServerStartAction extends ReduxActionWithResult<IsolateControll
   /// application instance request this one to show itself. `null` disables it.
   final String? showToken;
 
+  /// Where partially received files of resumable transfers are recorded.
+  /// `null` keeps resuming within a single transfer only.
+  final String? resumeRegistryPath;
+
   IsolateHttpServerStartAction({
     required this.pin,
     required this.verifyChecksums,
     required this.web,
     required this.showToken,
+    required this.resumeRegistryPath,
   });
 
   @override
@@ -335,6 +340,7 @@ class IsolateHttpServerStartAction extends ReduxActionWithResult<IsolateControll
           verifyChecksums: verifyChecksums,
           web: web,
           showToken: showToken,
+          resumeRegistryPath: resumeRegistryPath,
         ),
       ),
     );

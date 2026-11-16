@@ -10,6 +10,7 @@ import 'package:localsend_app/provider/network/server/controller/send_controller
 import 'package:localsend_app/provider/network/server/server_utils.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/util/alias_generator.dart';
+import 'package:localsend_app/util/native/directories.dart';
 import 'package:localsend_app/util/native/web_pages_loader.dart';
 import 'package:localsend_isolates/constants.dart';
 import 'package:localsend_isolates/isolate.dart';
@@ -143,6 +144,7 @@ class ServerService extends Notifier<ServerState?> {
     // A custom error-403.html replaces the built-in 403 page even while no web
     // share is active; client certificates stay mandatory in that mode.
     final customWebPages = await loadCustomWebPages();
+    final resumeRegistryPath = await getResumeRegistryPath();
     final events = ref
         .redux(parentIsolateProvider)
         .dispatchTakeResult(
@@ -179,6 +181,7 @@ class ServerService extends Notifier<ServerState?> {
               pages: customWebPages,
             ),
             showToken: settings.showToken,
+            resumeRegistryPath: resumeRegistryPath,
           ),
         );
 
@@ -352,6 +355,8 @@ class ServerService extends Notifier<ServerState?> {
       case HttpServerFileUploadResultEvent():
         // ignore: discarded_futures
         _receiveController.onFileUploadResult(event);
+      case HttpServerFileInterruptedEvent():
+        _receiveController.onFileInterrupted(event);
       case HttpServerSessionEndEvent():
         _receiveController.onSessionEnd(event);
       case HttpServerPrepareUploadAbortedEvent():

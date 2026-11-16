@@ -75,6 +75,82 @@ void main() {
     expect(existingContent.readAsStringSync(), 'keep');
     expect(existingFile.readAsStringSync(), 'existing');
   });
+
+  test('partialFileName hides the file', () {
+    expect(partialFileName('a.jpg'), '.a.jpg.lspart');
+  });
+
+  test('preparePartialSaveTarget writes a hidden file next to the destination', () async {
+    final target = await preparePartialSaveTarget(
+      destinationDirectory: tempDir.path,
+      cacheDirectory: p.join(tempDir.path, 'cache'),
+      fileName: 'a.jpg',
+      saveToGallery: false,
+      createdDirectories: {},
+    );
+
+    expect(target.path, p.join(tempDir.path, '.a.jpg.lspart'));
+    expect(target.displayPath, target.path);
+  });
+
+  test('finalizePartialSaveTarget renames to the final name', () async {
+    final target = await preparePartialSaveTarget(
+      destinationDirectory: tempDir.path,
+      cacheDirectory: p.join(tempDir.path, 'cache'),
+      fileName: 'a.jpg',
+      saveToGallery: false,
+      createdDirectories: {},
+    );
+    File(target.path!).writeAsStringSync('received');
+
+    final finalPath = await finalizePartialSaveTarget(
+      target: target,
+      destinationDirectory: tempDir.path,
+      fileName: 'a.jpg',
+      createdDirectories: {},
+    );
+
+    expect(finalPath, p.join(tempDir.path, 'a.jpg'));
+    expect(File(finalPath).readAsStringSync(), 'received');
+    expect(File(target.path!).existsSync(), isFalse);
+  });
+
+  test('finalizePartialSaveTarget picks a numbered name on conflict', () async {
+    final target = await preparePartialSaveTarget(
+      destinationDirectory: tempDir.path,
+      cacheDirectory: p.join(tempDir.path, 'cache'),
+      fileName: 'a.jpg',
+      saveToGallery: false,
+      createdDirectories: {},
+    );
+    File(target.path!).writeAsStringSync('received');
+    // Saved in the meantime, e.g. by another transfer.
+    File(p.join(tempDir.path, 'a.jpg')).writeAsStringSync('other');
+
+    final finalPath = await finalizePartialSaveTarget(
+      target: target,
+      destinationDirectory: tempDir.path,
+      fileName: 'a.jpg',
+      createdDirectories: {},
+    );
+
+    expect(finalPath, p.join(tempDir.path, 'a (2).jpg'));
+    expect(File(finalPath).readAsStringSync(), 'received');
+    expect(File(p.join(tempDir.path, 'a.jpg')).readAsStringSync(), 'other');
+  });
+
+  test('a partial file for the gallery keeps its name in the cache', () async {
+    final target = await preparePartialSaveTarget(
+      destinationDirectory: tempDir.path,
+      cacheDirectory: p.join(tempDir.path, 'cache'),
+      fileName: 'a.jpg',
+      saveToGallery: true,
+      createdDirectories: {},
+    );
+
+    expect(p.basename(target.path!), 'a.jpg');
+    expect(p.isWithin(p.join(tempDir.path, 'cache', 'resume'), target.path!), isTrue);
+  });
 }
 
 /// The sanitizer lives in the Rust library, which is not loaded in unit tests.

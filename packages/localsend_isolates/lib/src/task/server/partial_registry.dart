@@ -220,10 +220,20 @@ class PartialRegistry {
     }
   }
 
-  Future<void> _save() async {
+  /// The last pending write; writes run one after another, so they never share the temporary file.
+  Future<void> _lastSave = Future.value();
+
+  Future<void> _save() {
+    final save = _lastSave.then((_) => _write());
+    _lastSave = save.catchError((Object e) => _logger.warning('Could not save the partial file registry', e));
+    return save;
+  }
+
+  Future<void> _write() async {
     final file = File(filePath);
     await file.parent.create(recursive: true);
     final temp = File('$filePath.tmp');
+    // Serialized when written, so it contains every change made before.
     await temp.writeAsString(jsonEncode({'entries': _entries.values.map((entry) => entry.toJson()).toList()}), flush: true);
     await temp.rename(filePath);
   }

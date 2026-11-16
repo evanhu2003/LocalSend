@@ -134,6 +134,22 @@ void main() {
     expect(match.offset, 40);
   });
 
+  test('concurrent updates are all persisted', () async {
+    final r = await registry();
+    await r.upsert(entry(id: 'a', sha256: 'a'));
+    await r.upsert(entry(id: 'b', sha256: 'b'));
+
+    // Progress of one file and the interruption of another arrive together.
+    await Future.wait([
+      for (var i = 1; i <= 20; i++) r.updateCommitted(i.isEven ? 'a' : 'b', i),
+    ]);
+
+    final reloaded = await registry();
+    final committed = {for (final e in reloaded.entries) e.id: e.committed};
+    expect(committed, {'a': 20, 'b': 19});
+    expect(File('$registryPath.tmp').existsSync(), isFalse);
+  });
+
   test('confirmResumeOffsets drops files whose destination or gallery setting changed', () {
     final same = entry(id: 'same', sha256: 'a');
     final otherFolder = entry(id: 'folder', sha256: 'b', destinationDirectory: '/elsewhere');

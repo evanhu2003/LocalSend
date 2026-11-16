@@ -7,6 +7,7 @@ import 'package:localsend_isolates/util/content_uri_helper.dart';
 import 'package:localsend_isolates/util/file_path_helper.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 
 final _logger = Logger('FileSaver');
 
@@ -58,17 +59,7 @@ Future<FileSaveTarget> prepareFileSaveTarget({
 
   // When saveToGallery is enabled, the cache directory is used so SAF is not needed
   if (!saveToGallery && androidSdkInt != null) {
-    String? parentUri;
-    if (documentUri != null || destinationPath.startsWith('content://')) {
-      parentUri = documentUri ?? destinationPath;
-    } else {
-      final sdCardPath = getSdCardPath(destinationPath);
-      if (sdCardPath != null) {
-        final uriString = ContentUriHelper.encodeTreeUri(sdCardPath.path.parentPath());
-        parentUri = 'content://com.android.externalstorage.documents/tree/${sdCardPath.sdCardId}:$uriString';
-      }
-    }
-
+    final parentUri = _safParentUri(destinationPath: destinationPath, documentUri: documentUri);
     if (parentUri != null) {
       _logger.info('Using SAF to save file to $parentUri as $finalName');
       final createdFile = await android_channel.createFileAndroid(
@@ -266,4 +257,125 @@ SdCardPath? getSdCardPath(String path) {
     return null;
   }
   return SdCardPath(match.group(1)!, match.group(2)!);
+}
+
+/// The SAF directory a file at [destinationPath] has to be created in, or
+/// `null` when the path can be written directly.
+String? _safParentUri({required String destinationPath, required String? documentUri}) {
+  if (documentUri != null || destinationPath.startsWith('content://')) {
+    return documentUri ?? destinationPath;
+  }
+  final sdCardPath = getSdCardPath(destinationPath);
+  if (sdCardPath != null) {
+    final uriString = ContentUriHelper.encodeTreeUri(sdCardPath.path.parentPath());
+    return 'content://$_externalStorageAuthority/tree/${sdCardPath.sdCardId}:$uriString';
+  }
+  return null;
+}
+
+/// The provider of the device storage, which supports renaming documents.
+const _externalStorageAuthority = 'com.android.externalstorage.documents';
+
+/// The hidden name a file of a resumable transfer has while it is incomplete.
+String partialFileName(String finalName) => '.$finalName.lspart';
+
+/// Prepares the destination for an incoming file of a resumable transfer: an
+/// incomplete file must not look like a complete one.
+///
+/// - Directly writable destinations get a hidden partial file next to the
+///   final file ([partialFileName]), renamed by [finalizePartialSaveTarget].
+/// - SAF destinations of the device storage do the same with a document.
+///   Other document providers may not support renaming, so the file is
+///   created under its final name there.
+/// - Gallery saves keep their name (the gallery detects the type by it) in a
+///   directory of their own below `<cacheDirectory>/resume`.
+Future<FileSaveTarget> preparePartialSaveTarget({
+  required String destinationDirectory,
+  required String cacheDirectory,
+  required String fileName,
+  required bool saveToGallery,
+  required Set<String> createdDirectories,
+  int? androidSdkInt,
+  String? partialId,
+}) async {
+  if (saveToGallery) {
+    final directory = p.join(cacheDirectory, 'resume', partialId ?? const Uuid().v4());
+    await Directory(directory).create(recursive: true);
+    final path = p.join(directory, p.basename(fileName));
+    return FileSaveTarget(path: path, fileDescriptor: null, displayPath: path);
+  }
+
+  final (destinationPath, documentUri, finalName) = await digestFilePathAndPrepareDirectory(
+    parentDirectory: destinationDirectory,
+    fileName: fileName,
+    createdDirectories: createdDirectories,
+  );
+
+  if (androidSdkInt != null) {
+    final parentUri = _safParentUri(destinationPath: destinationPath, documentUri: documentUri);
+    if (parentUri != null) {
+      final renamable = Uri.parse(parentUri).authority == _externalStorageAuthority;
+      final createdFile = await android_channel.createFileAndroid(
+        parentUri: parentUri,
+        fileName: renamable ? partialFileName(finalName) : finalName,
+      );
+      return FileSaveTarget(path: null, fileDescriptor: createdFile.fileDescriptor, displayPath: createdFile.uri);
+    }
+  }
+
+  final partialPath = p.join(p.dirname(destinationPath), partialFileName(p.basename(destinationPath)));
+  return FileSaveTarget(path: partialPath, fileDescriptor: null, displayPath: partialPath);
+}
+
+/// Opens the partial file of a resumable transfer again to continue it: a
+/// [path] is written by the server directly, a SAF document [uri] is opened in
+/// the seekable "rw" mode.
+Future<FileSaveTarget> reopenPartialSaveTarget({required String? path, required String? uri}) async {
+  if (path != null) {
+    return FileSaveTarget(path: path, fileDescriptor: null, displayPath: path);
+  }
+  if (uri == null) {
+    throw ArgumentError('A partial file needs a path or a URI');
+  }
+  _logger.info('Reopening $uri to continue it');
+  return FileSaveTarget(
+    path: null,
+    fileDescriptor: await android_channel.openFileForResumeAndroid(uri: uri),
+    displayPath: uri,
+  );
+}
+
+/// Gives the completely received partial file of [target] its final name and
+/// returns the final path or document URI.
+///
+/// The final name is chosen now, so a file saved under the same name in the
+/// meantime is not overwritten.
+Future<String> finalizePartialSaveTarget({
+  required FileSaveTarget target,
+  required String destinationDirectory,
+  required String fileName,
+  required Set<String> createdDirectories,
+}) async {
+  final path = target.path;
+  if (path != null) {
+    final (destinationPath, _, _) = await digestFilePathAndPrepareDirectory(
+      parentDirectory: destinationDirectory,
+      fileName: fileName,
+      createdDirectories: createdDirectories,
+    );
+    await File(path).rename(destinationPath);
+    return destinationPath;
+  }
+
+  final uri = target.displayPath;
+  if (!Uri.decodeComponent(uri).endsWith('.lspart')) {
+    // Created under its final name (provider without renaming).
+    return uri;
+  }
+  final renamed = await android_channel.renameDocumentAndroid(uri: uri, displayName: p.basename(fileName));
+  if (renamed == null) {
+    _logger.warning('The document provider could not rename $uri');
+    return uri;
+  }
+  return renamed;
 }
