@@ -49,8 +49,19 @@ class HttpServerService {
 
   /// Answers a pending prepare-upload request.
   /// [acceptedFileIds] is the subset of the offered files to accept; `null` declines the request.
-  Future<void> respondPrepareUpload({required List<String>? acceptedFileIds}) async {
-    await _requireServer().respondPrepareUpload(acceptedFileIds: acceptedFileIds);
+  /// [resumeOffsets] tells the sender how many bytes of a file this device already holds
+  /// (resumable sessions only).
+  Future<void> respondPrepareUpload({required List<String>? acceptedFileIds, Map<String, int>? resumeOffsets}) async {
+    await _requireServer().respondPrepareUpload(
+      acceptedFileIds: acceptedFileIds,
+      resumeOffsets: resumeOffsets?.map((fileId, offset) => MapEntry(fileId, BigInt.from(offset))),
+    );
+  }
+
+  /// Discards what this device holds of a file of a resumable session: the sender's next upload
+  /// of the file starts at 0.
+  Future<bool> resetFileUpload({required String sessionId, required String fileId}) {
+    return _requireServer().resetFileUpload(sessionId: sessionId, fileId: fileId);
   }
 
   /// Answers a pending file upload with the target the file should be saved to
@@ -62,12 +73,16 @@ class HttpServerService {
   ///
   /// Timestamps provided in the sender's file metadata are applied to the
   /// written file by the Rust server.
-  Stream<double> respondFileUpload({
+  ///
+  /// [offset] is the offset the upload starts at (see [RsServerEvent_FileUpload.offset]): the target
+  /// must already hold the bytes before it. The progress reports absolute positions in the file.
+  Stream<RsUploadProgress> respondFileUpload({
     required String sessionId,
     required String fileId,
     required String? path,
     required int? fileDescriptor,
     required int fileSize,
+    required int offset,
   }) {
     return _requireServer().respondFileUpload(
       sessionId: sessionId,
@@ -75,6 +90,7 @@ class HttpServerService {
       path: path,
       fileDescriptor: fileDescriptor,
       fileSize: BigInt.from(fileSize),
+      offset: BigInt.from(offset),
     );
   }
 

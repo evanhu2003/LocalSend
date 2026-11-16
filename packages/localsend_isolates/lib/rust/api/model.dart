@@ -70,36 +70,52 @@ class FileMetadata {
 class PrepareUploadRequestDto {
   final RegisterDto info;
   final Map<String, FileDto> files;
+  final int? resumeSupport;
 
   const PrepareUploadRequestDto({
     required this.info,
     required this.files,
+    this.resumeSupport,
   });
 
   @override
-  int get hashCode => info.hashCode ^ files.hashCode;
+  int get hashCode => info.hashCode ^ files.hashCode ^ resumeSupport.hashCode;
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) || other is PrepareUploadRequestDto && runtimeType == other.runtimeType && info == other.info && files == other.files;
+      identical(this, other) ||
+      other is PrepareUploadRequestDto &&
+          runtimeType == other.runtimeType &&
+          info == other.info &&
+          files == other.files &&
+          resumeSupport == other.resumeSupport;
 }
 
 class PrepareUploadResponseDto {
   final String sessionId;
   final Map<String, String> files;
+  final int? resumeSupport;
+  final Map<String, BigInt> resumeOffsets;
 
   const PrepareUploadResponseDto({
     required this.sessionId,
     required this.files,
+    this.resumeSupport,
+    required this.resumeOffsets,
   });
 
   @override
-  int get hashCode => sessionId.hashCode ^ files.hashCode;
+  int get hashCode => sessionId.hashCode ^ files.hashCode ^ resumeSupport.hashCode ^ resumeOffsets.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is PrepareUploadResponseDto && runtimeType == other.runtimeType && sessionId == other.sessionId && files == other.files;
+      other is PrepareUploadResponseDto &&
+          runtimeType == other.runtimeType &&
+          sessionId == other.sessionId &&
+          files == other.files &&
+          resumeSupport == other.resumeSupport &&
+          resumeOffsets == other.resumeOffsets;
 }
 
 enum ProtocolType {

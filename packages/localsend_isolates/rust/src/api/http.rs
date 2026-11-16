@@ -107,6 +107,7 @@ impl RsHttpClient {
         path: Option<String>,
         file_descriptor: Option<i32>,
         content_length: u64,
+        offset: u64,
         cancel_token: &RsCancellationToken,
     ) {
         let result = async {
@@ -142,7 +143,7 @@ impl RsHttpClient {
                     file_id,
                     token,
                     content,
-                    0,
+                    offset,
                     progress,
                     cancel_token.inner.clone(),
                 )
@@ -156,6 +157,25 @@ impl RsHttpClient {
         if let Err(error) = result {
             let _ = sink.add(RsUploadEvent::Failed { error });
         }
+    }
+
+    /// The offset the receiver holds of a file of a resumable session; an
+    /// upload of the file still running on the receiver is aborted first.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upload_offset(
+        &self,
+        protocol: ProtocolType,
+        ip: &str,
+        port: u16,
+        public_key: Option<String>,
+        session_id: &str,
+        file_id: &str,
+        token: &str,
+    ) -> Result<u64, RsHttpClientError> {
+        self.inner
+            .upload_offset(protocol, ip, port, public_key, session_id, file_id, token)
+            .await
+            .map_err(RsHttpClientError::from)
     }
 
     pub async fn cancel(
@@ -218,6 +238,8 @@ pub enum RsHttpClientError {
     StatusCode {
         status: u16,
         message: Option<String>,
+        /// On 409 "Offset mismatch": the offset the receiver expects.
+        offset: Option<u64>,
     },
     Reqwest(String),
     Json(String),
@@ -231,6 +253,7 @@ impl From<ClientError> for RsHttpClientError {
             ClientError::StatusCode(e) => RsHttpClientError::StatusCode {
                 status: e.status,
                 message: e.message,
+                offset: e.offset,
             },
             ClientError::Reqwest(e) => RsHttpClientError::Reqwest(ErrorChain(&e).to_string()),
             ClientError::Json(e) => RsHttpClientError::Json(e.to_string()),

@@ -65,10 +65,13 @@ pub struct _FileMetadata {
 pub struct _PrepareUploadRequestDto {
     pub info: RegisterDto,
     pub files: HashMap<String, FileDto>,
+    pub resume_support: Option<u32>,
 }
 
 #[frb(mirror(PrepareUploadResponseDto))]
 pub struct _PrepareUploadResponseDto {
     pub session_id: String,
     pub files: HashMap<String, String>,
+    pub resume_support: Option<u32>,
+    pub resume_offsets: HashMap<String, u64>,
 }

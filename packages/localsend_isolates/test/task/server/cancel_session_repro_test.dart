@@ -116,9 +116,10 @@ void main() {
                   path: '${tempDir.path}/$fileId',
                   fileDescriptor: null,
                   fileSize: file.size,
+                  offset: BigInt.zero,
                 );
                 await for (final progress in progressStream) {
-                  if (progress > 0.2) {
+                  if (progress.written * BigInt.from(5) > file.size) {
                     // Receiver-side cancel mid-transfer (HttpServerCancelSessionTask).
                     triggerReceiverCancel(sessionId);
                   }

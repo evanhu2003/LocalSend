@@ -46,6 +46,7 @@ class HttpUploadService {
           path: path,
           fileDescriptor: fileDescriptor,
           contentLength: BigInt.from(contentLength),
+          offset: BigInt.zero,
           cancelToken: cancelToken,
         )
         .forEach((event) {

@@ -12,6 +12,7 @@ part 'server.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `handle_server_event`, `handle_web_event`, `recv_opt`, `resolve_file_content`, `resolve_upload_target`, `stop`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ServerInstance`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`
 
 /// Starts the HTTP server on the given port (IPv4 and IPv6).
 /// The server runs until [RsHttpServer::stop] is called.
@@ -70,11 +71,6 @@ abstract class RsHttpServer implements RustOpaqueInterface {
   /// Does nothing if the download was already answered.
   Future<void> failFileDownload({required String sessionId, required String fileId});
 
-  /// Fails the pending [RsServerEvent::FileUpload] event, e.g. because
-  /// the application failed to prepare a save target for the file.
-  ///
-  /// The upload request fails with an error response and the file is marked
-  /// as failed. Does nothing if the upload was already answered.
   Future<void> failFileUpload({required String sessionId, required String fileId});
 
   /// Emits server events until the server is stopped.
@@ -86,6 +82,16 @@ abstract class RsHttpServer implements RustOpaqueInterface {
   /// Also returns when the Dart side of the stream is gone (e.g. after a
   /// hot restart), so this call does not keep the server alive forever.
   Stream<RsServerEvent> listen();
+
+  /// Fails the pending [RsServerEvent::FileUpload] event, e.g. because
+  /// the application failed to prepare a save target for the file.
+  ///
+  /// The upload request fails with an error response and the file is marked
+  /// as failed. Does nothing if the upload was already answered.
+  /// Discards what this device holds of a file of a resumable session (e.g.
+  /// its partial file cannot be opened again): the sender's next upload of
+  /// the file starts at 0. Returns whether the file was found.
+  Future<bool> resetFileUpload({required String sessionId, required String fileId});
 
   /// Answers the pending [RsServerEvent::WebFileDownload] event with the source
   /// the file content should be read from (either a path or a file descriptor).
@@ -105,7 +111,14 @@ abstract class RsHttpServer implements RustOpaqueInterface {
   ///
   /// Timestamps provided in the sender's file metadata are applied to the
   /// written file by the server.
-  Stream<double> respondFileUpload({required String sessionId, required String fileId, String? path, int? fileDescriptor, required BigInt fileSize});
+  Stream<RsUploadProgress> respondFileUpload({
+    required String sessionId,
+    required String fileId,
+    String? path,
+    int? fileDescriptor,
+    required BigInt fileSize,
+    required BigInt offset,
+  });
 
   /// Answers the pending [RsServerEvent::WebPrepareDownload] event.
   ///
@@ -116,7 +129,10 @@ abstract class RsHttpServer implements RustOpaqueInterface {
   ///
   /// Passing the accepted file IDs (a subset of the offered files) accepts the request.
   /// Passing `None` declines the request.
-  Future<void> respondPrepareUpload({List<String>? acceptedFileIds});
+  ///
+  /// `resume_offsets` tells the sender how many bytes of a file this device
+  /// already holds from an earlier transfer (resumable sessions only).
+  Future<void> respondPrepareUpload({List<String>? acceptedFileIds, Map<String, BigInt>? resumeOffsets});
 
   /// Stops the server.
   /// Returns after the listeners are closed, so the port can be bound again.
@@ -197,6 +213,11 @@ sealed class RsServerEvent with _$RsServerEvent {
     /// `None` when the server runs without TLS.
     String? certFingerprint,
     required Map<String, FileDto> files,
+
+    /// Whether the session will be resumable (the sender announced
+    /// `resumeSupport` over TLS): offsets passed to
+    /// [RsHttpServer::respond_prepare_upload] only apply then.
+    required bool resumable,
   }) = RsServerEvent_PrepareUpload;
 
   /// An accepted file is being uploaded via `POST /api/localsend/v2/upload`.
@@ -204,7 +225,19 @@ sealed class RsServerEvent with _$RsServerEvent {
     required String sessionId,
     required String fileId,
     required FileDto file,
+
+    /// The upload continues the file at this offset: the target must keep
+    /// the bytes before it (see [RsHttpServer::respond_file_upload]).
+    required BigInt offset,
   }) = RsServerEvent_FileUpload;
+
+  /// An upload of a resumable session broke off at `committed` bytes; the
+  /// sender may continue it.
+  const factory RsServerEvent.fileInterrupted({
+    required String sessionId,
+    required String fileId,
+    required BigInt committed,
+  }) = RsServerEvent_FileInterrupted;
 
   /// An upload session ended.
   const factory RsServerEvent.sessionEnd({
@@ -264,9 +297,34 @@ sealed class RsServerEvent with _$RsServerEvent {
   }) = RsServerEvent_ListenerFailed;
 }
 
+/// Progress of a file being received, as absolute positions in the file.
+class RsUploadProgress {
+  /// Bytes of the file written so far (including a resumed offset).
+  final BigInt written;
+
+  /// Bytes of the file that are durably stored: an interrupted transfer
+  /// can be resumed from here.
+  final BigInt committed;
+
+  const RsUploadProgress({
+    required this.written,
+    required this.committed,
+  });
+
+  @override
+  int get hashCode => written.hashCode ^ committed.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RsUploadProgress && runtimeType == other.runtimeType && written == other.written && committed == other.committed;
+}
+
 enum SessionEndReasonV2 {
   finished,
   cancelled,
+  idleTimeout,
+  superseded,
 }
 
 class TlsConfig {

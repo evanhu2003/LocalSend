@@ -458,6 +458,9 @@ class ReceiveController {
         // Already handled when the last file finished.
         break;
       case SessionEndReasonV2.cancelled:
+      // The sender did not come back to finish the transfer (or started a new one).
+      case SessionEndReasonV2.idleTimeout:
+      case SessionEndReasonV2.superseded:
         _cancelBySender(server);
     }
   }

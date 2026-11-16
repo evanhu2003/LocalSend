@@ -150,6 +150,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Map<String, FileDto> dco_decode_Map_String_file_dto_None(dynamic raw);
 
   @protected
+  Map<String, BigInt> dco_decode_Map_String_u_64_None(dynamic raw);
+
+  @protected
   Dart2RustStreamReceiver dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDart2RustStreamReceiver(dynamic raw);
 
   @protected
@@ -191,9 +194,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  RustStreamSink<double> dco_decode_StreamSink_f_64_Sse(dynamic raw);
-
-  @protected
   RustStreamSink<Uint8List> dco_decode_StreamSink_list_prim_u_8_strict_Sse(dynamic raw);
 
   @protected
@@ -207,6 +207,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RustStreamSink<RsUploadEvent> dco_decode_StreamSink_rs_upload_event_Sse(dynamic raw);
+
+  @protected
+  RustStreamSink<RsUploadProgress> dco_decode_StreamSink_rs_upload_progress_Sse(dynamic raw);
 
   @protected
   RustStreamSink<RTCFileError> dco_decode_StreamSink_rtc_file_error_Sse(dynamic raw);
@@ -286,6 +289,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int dco_decode_box_autoadd_u_32(dynamic raw);
 
   @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
+
+  @protected
   WebParams dco_decode_box_autoadd_web_params(dynamic raw);
 
   @protected
@@ -346,6 +352,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<(String, String)> dco_decode_list_record_string_string(dynamic raw);
 
   @protected
+  List<(String, BigInt)> dco_decode_list_record_string_u_64(dynamic raw);
+
+  @protected
   List<RsDeviceChannel> dco_decode_list_rs_device_channel(dynamic raw);
 
   @protected
@@ -353,6 +362,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LsHttpClientVersion dco_decode_ls_http_client_version(dynamic raw);
+
+  @protected
+  Map<String, BigInt>? dco_decode_opt_Map_String_u_64_None(dynamic raw);
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
@@ -384,6 +396,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
 
   @protected
   List<String>? dco_decode_opt_list_String(dynamic raw);
@@ -422,6 +437,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   (String, String) dco_decode_record_string_string(dynamic raw);
 
   @protected
+  (String, BigInt) dco_decode_record_string_u_64(dynamic raw);
+
+  @protected
   RegisterDto dco_decode_register_dto(dynamic raw);
 
   @protected
@@ -456,6 +474,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RsUploadEvent dco_decode_rs_upload_event(dynamic raw);
+
+  @protected
+  RsUploadProgress dco_decode_rs_upload_progress(dynamic raw);
 
   @protected
   RTCFileError dco_decode_rtc_file_error(dynamic raw);
@@ -612,6 +633,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Map<String, FileDto> sse_decode_Map_String_file_dto_None(SseDeserializer deserializer);
 
   @protected
+  Map<String, BigInt> sse_decode_Map_String_u_64_None(SseDeserializer deserializer);
+
+  @protected
   Dart2RustStreamReceiver sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDart2RustStreamReceiver(
     SseDeserializer deserializer,
   );
@@ -655,9 +679,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  RustStreamSink<double> sse_decode_StreamSink_f_64_Sse(SseDeserializer deserializer);
-
-  @protected
   RustStreamSink<Uint8List> sse_decode_StreamSink_list_prim_u_8_strict_Sse(SseDeserializer deserializer);
 
   @protected
@@ -671,6 +692,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RustStreamSink<RsUploadEvent> sse_decode_StreamSink_rs_upload_event_Sse(SseDeserializer deserializer);
+
+  @protected
+  RustStreamSink<RsUploadProgress> sse_decode_StreamSink_rs_upload_progress_Sse(SseDeserializer deserializer);
 
   @protected
   RustStreamSink<RTCFileError> sse_decode_StreamSink_rtc_file_error_Sse(SseDeserializer deserializer);
@@ -750,6 +774,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
   WebParams sse_decode_box_autoadd_web_params(SseDeserializer deserializer);
 
   @protected
@@ -810,6 +837,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<(String, String)> sse_decode_list_record_string_string(SseDeserializer deserializer);
 
   @protected
+  List<(String, BigInt)> sse_decode_list_record_string_u_64(SseDeserializer deserializer);
+
+  @protected
   List<RsDeviceChannel> sse_decode_list_rs_device_channel(SseDeserializer deserializer);
 
   @protected
@@ -817,6 +847,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LsHttpClientVersion sse_decode_ls_http_client_version(SseDeserializer deserializer);
+
+  @protected
+  Map<String, BigInt>? sse_decode_opt_Map_String_u_64_None(SseDeserializer deserializer);
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
@@ -850,6 +883,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
 
   @protected
   List<String>? sse_decode_opt_list_String(SseDeserializer deserializer);
@@ -888,6 +924,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   (String, String) sse_decode_record_string_string(SseDeserializer deserializer);
 
   @protected
+  (String, BigInt) sse_decode_record_string_u_64(SseDeserializer deserializer);
+
+  @protected
   RegisterDto sse_decode_register_dto(SseDeserializer deserializer);
 
   @protected
@@ -922,6 +961,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RsUploadEvent sse_decode_rs_upload_event(SseDeserializer deserializer);
+
+  @protected
+  RsUploadProgress sse_decode_rs_upload_progress(SseDeserializer deserializer);
 
   @protected
   RTCFileError sse_decode_rtc_file_error(SseDeserializer deserializer);
@@ -1108,6 +1150,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_Map_String_file_dto_None(Map<String, FileDto> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_Map_String_u_64_None(Map<String, BigInt> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerDart2RustStreamReceiver(
     Dart2RustStreamReceiver self,
     SseSerializer serializer,
@@ -1165,9 +1210,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_StreamSink_f_64_Sse(RustStreamSink<double> self, SseSerializer serializer);
-
-  @protected
   void sse_encode_StreamSink_list_prim_u_8_strict_Sse(RustStreamSink<Uint8List> self, SseSerializer serializer);
 
   @protected
@@ -1181,6 +1223,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_StreamSink_rs_upload_event_Sse(RustStreamSink<RsUploadEvent> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_StreamSink_rs_upload_progress_Sse(RustStreamSink<RsUploadProgress> self, SseSerializer serializer);
 
   @protected
   void sse_encode_StreamSink_rtc_file_error_Sse(RustStreamSink<RTCFileError> self, SseSerializer serializer);
@@ -1261,6 +1306,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
+
+  @protected
   void sse_encode_box_autoadd_web_params(WebParams self, SseSerializer serializer);
 
   @protected
@@ -1321,6 +1369,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_record_string_string(List<(String, String)> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_record_string_u_64(List<(String, BigInt)> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_rs_device_channel(List<RsDeviceChannel> self, SseSerializer serializer);
 
   @protected
@@ -1328,6 +1379,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_ls_http_client_version(LsHttpClientVersion self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_Map_String_u_64_None(Map<String, BigInt>? self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
@@ -1361,6 +1415,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_list_String(List<String>? self, SseSerializer serializer);
@@ -1400,6 +1457,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_record_string_string((String, String) self, SseSerializer serializer);
 
   @protected
+  void sse_encode_record_string_u_64((String, BigInt) self, SseSerializer serializer);
+
+  @protected
   void sse_encode_register_dto(RegisterDto self, SseSerializer serializer);
 
   @protected
@@ -1434,6 +1494,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_rs_upload_event(RsUploadEvent self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_rs_upload_progress(RsUploadProgress self, SseSerializer serializer);
 
   @protected
   void sse_encode_rtc_file_error(RTCFileError self, SseSerializer serializer);

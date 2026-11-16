@@ -544,6 +544,9 @@ Future<void> setupHttpServerIsolate(
                   );
                 case RsServerEvent_Show(:final args):
                   emit(HttpServerShowEvent(args: args));
+                case RsServerEvent_FileInterrupted():
+                  // Not resumable yet on this side: the upload failed already.
+                  break;
                 case RsServerEvent_ListenerFailed(:final error):
                   ref.read(_receiveSessionProvider).session = null;
                   emit(HttpServerListenerFailedEvent(error: error));
@@ -687,13 +690,14 @@ Future<void> _handleFileUpload({
           path: target.path,
           fileDescriptor: target.fileDescriptor,
           fileSize: dartFile.size,
+          offset: 0,
         );
     await for (final progress in progressStream) {
       emit(
         HttpServerFileUploadProgressEvent(
           sessionId: sessionId,
           fileId: fileId,
-          progress: progress,
+          progress: dartFile.size == 0 ? 1.0 : (progress.written.toInt() / dartFile.size).clamp(0.0, 1.0),
         ),
       );
     }

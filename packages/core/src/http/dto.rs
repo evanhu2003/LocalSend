@@ -93,6 +93,10 @@ pub struct RegisterResponseDto {
 pub struct PrepareUploadRequestDto {
     pub info: RegisterDto,
     pub files: HashMap<String, FileDto>,
+
+    /// See [PrepareUploadRequestDtoV2::resume_support] (protocol v2 only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_support: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,6 +104,14 @@ pub struct PrepareUploadRequestDto {
 pub struct PrepareUploadResponseDto {
     pub session_id: String,
     pub files: HashMap<String, String>,
+
+    /// See [PrepareUploadResponseDtoV2::resume_support].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_support: Option<u32>,
+
+    /// See [PrepareUploadResponseDtoV2::resume_offsets].
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub resume_offsets: HashMap<String, u64>,
 }
 
 impl From<PrepareUploadRequestDto> for PrepareUploadRequestDtoV2 {
@@ -107,7 +119,7 @@ impl From<PrepareUploadRequestDto> for PrepareUploadRequestDtoV2 {
         PrepareUploadRequestDtoV2 {
             info: v3.info.into(),
             files: v3.files,
-            resume_support: None,
+            resume_support: v3.resume_support,
         }
     }
 }
@@ -122,6 +134,8 @@ impl From<PrepareUploadResponseDtoV2> for PrepareUploadResponseDto {
         PrepareUploadResponseDto {
             session_id: v2.session_id,
             files: v2.files,
+            resume_support: v2.resume_support,
+            resume_offsets: v2.resume_offsets,
         }
     }
 }

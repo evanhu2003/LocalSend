@@ -74,7 +74,20 @@ abstract class RsHttpClient implements RustOpaqueInterface {
     String? path,
     int? fileDescriptor,
     required BigInt contentLength,
+    required BigInt offset,
     required RsCancellationToken cancelToken,
+  });
+
+  /// The offset the receiver holds of a file of a resumable session; an
+  /// upload of the file still running on the receiver is aborted first.
+  Future<BigInt> uploadOffset({
+    required ProtocolType protocol,
+    required String ip,
+    required int port,
+    String? publicKey,
+    required String sessionId,
+    required String fileId,
+    required String token,
   });
 }
 
@@ -126,6 +139,9 @@ sealed class RsHttpClientError with _$RsHttpClientError implements FrbException 
   const factory RsHttpClientError.statusCode({
     required int status,
     String? message,
+
+    /// On 409 "Offset mismatch": the offset the receiver expects.
+    BigInt? offset,
   }) = RsHttpClientError_StatusCode;
   const factory RsHttpClientError.reqwest(
     String field0,
