@@ -1,6 +1,6 @@
 # LocalSend 電腦端（web-peer）
 
-在 Windows 電腦上執行的 LocalSend 相容節點，用瀏覽器操作，可以和手錶（或手機）上的 LocalSend App 互傳檔案與文字。
+在 Windows 或 Mac 電腦上執行的 LocalSend 相容節點，用瀏覽器操作，可以和手錶（或手機）上的 LocalSend App 互傳檔案與文字。
 
 - 用 Node.js 寫成，除了產生憑證用的 `node-forge` 之外不需要其他套件。
 - 協定與 LocalSend v2.2 相容：HTTPS 加密、連接埠 53317、多播探索，App 不需要改任何設定。
@@ -10,16 +10,24 @@
 
 ## 需求
 
-- Windows 10 / 11
+- Windows 10 / 11，或 macOS
 - [Node.js](https://nodejs.org/) 18 以上（建議安裝 LTS 版）
 - 電腦和手錶連在**同一個 Wi-Fi**，或都登入同一個 Tailscale 帳號（見「透過 Tailscale 使用」）
 
 ## 啟動
 
-1. 雙擊 `start.bat`。
+1. Windows 雙擊 `start.bat`；Mac 雙擊 `start.command`（見下方「Mac 注意事項」）。
 2. 第一次執行會自動安裝套件（需要網路），並在 `data/` 產生這台電腦專用的憑證。
 3. 瀏覽器會自動打開 `http://127.0.0.1:53318`。
-4. 要結束時，關掉黑色的命令列視窗，或在視窗裡按 `Ctrl+C`。
+4. 要結束時，關掉黑色的命令列視窗（Mac 是「終端機」視窗），或在視窗裡按 `Ctrl+C`。
+
+### Mac 注意事項
+
+- 第一次執行時，如果 macOS 詢問「終端機」是否可以尋找區域網路上的裝置，請按**「允許」**，否則手錶找不到這台 Mac。
+  按錯了可以到「系統設定 → 隱私權與安全性 → 區域網路」把「終端機」打開，再重新啟動。
+- 如果有開 macOS 防火牆，詢問是否允許 `node` 接受傳入連線時，請按「允許」。
+- 從 zip 解壓縮或從 Windows 複製過來後，雙擊沒反應或顯示沒有權限：在終端機執行 `chmod +x start.command`。
+  顯示「無法打開，因為它來自未識別的開發者」時，對檔案按右鍵 →「打開」。
 
 也可以在命令列裡手動執行：
 
@@ -122,7 +130,7 @@ New-NetFirewallRule -DisplayName "LocalSend web-peer UDP" -Direction Inbound -Pr
 | 顯示「對方正在進行其他傳輸」 | 手錶一次只能收一個傳輸，等它結束或在手錶上取消後再試 |
 | 顯示「對方憑證 fingerprint 不符」 | 手錶重新安裝過 App（憑證變了）。按「重新掃描」更新裝置資料 |
 | 傳輸失敗、檔案不完整 | Wi-Fi 訊號不穩。重新傳一次即可；不完整的檔案不會留在收件資料夾 |
-| 網頁顯示「與本機服務中斷」 | 命令列視窗被關掉了，重新雙擊 `start.bat` |
+| 網頁顯示「與本機服務中斷」 | 命令列視窗被關掉了，重新雙擊 `start.bat`（Mac 是 `start.command`） |
 | 電腦有多張網卡（VPN、虛擬機） | 程式會在所有 IPv4 網卡上宣告；若仍有問題，暫時關閉 VPN 再試 |
 | 透過 Tailscale 找不到手錶 | 1. 確認兩邊 Tailscale 都用同一個帳號登入且在線上（網頁會顯示在線台數）。2. 手錶上 LocalSend 要開著。3. 防火牆要在 Tailscale 網路的設定檔放行 TCP 53317。4. 按「重新掃描」 |
 

@@ -47,7 +47,7 @@
 ### 2. 電腦:啟動網頁版
 
 1. 安裝 [Node.js](https://nodejs.org/) 18 以上。
-2. 雙擊 `web-peer\start.bat`。第一次會自動安裝套件,並開啟 `http://127.0.0.1:53318`。
+2. 雙擊 `web-peer\start.bat`(Mac 雙擊 `web-peer/start.command`)。第一次會自動安裝套件,並開啟 `http://127.0.0.1:53318`。
 3. Windows 防火牆跳出提示時,**要勾「公用網路」**(如果你的 Wi-Fi 是公用網路),否則手錶找不到電腦。
    也可以把 Wi-Fi 的網路類型改成「私人網路」。
 4. 手錶和電腦連同一個 Wi-Fi,打開手錶上的 LocalSend,雙方就會出現在彼此的「附近的裝置」。
