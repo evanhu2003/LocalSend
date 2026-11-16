@@ -7,6 +7,7 @@ import 'package:localsend_isolates/src/isolate/child/http_provider.dart';
 import 'package:localsend_isolates/src/isolate/child/main.dart';
 import 'package:localsend_isolates/src/isolate/dto/send_to_isolate_data.dart';
 import 'package:localsend_isolates/src/task/upload/http_upload.dart';
+import 'package:localsend_isolates/src/task/upload/resume_policy.dart';
 import 'package:localsend_isolates/util/android_channel.dart';
 import 'package:localsend_isolates/util/rust.dart';
 import 'package:pool/pool.dart';
@@ -31,12 +32,26 @@ class HttpUploadFile {
   final List<int>? fileBytes;
   final int fileSize;
 
+  /// Whether the receiver agreed to resumable uploads: a broken connection
+  /// reconnects and continues at the receiver's offset.
+  final bool resumable;
+
+  /// The offset to start at (bytes the receiver already holds).
+  final int offset;
+
+  /// Ask the receiver for the offset first, e.g. when the user retries a
+  /// failed file of a resumable session.
+  final bool queryOffsetFirst;
+
   HttpUploadFile({
     required this.remoteFileToken,
     required this.fileId,
     required this.filePath,
     required this.fileBytes,
     required this.fileSize,
+    this.resumable = false,
+    this.offset = 0,
+    this.queryOffsetFirst = false,
   });
 }
 
@@ -89,6 +104,17 @@ class HttpUploadFileProgressEvent extends HttpUploadEvent {
 /// The file has been uploaded successfully.
 class HttpUploadFileFinishedEvent extends HttpUploadEvent {
   HttpUploadFileFinishedEvent({required super.fileId});
+}
+
+/// The connection broke; the file of a resumable session is reconnecting
+/// ([attempt] counts the attempts). Progress events follow once it continues.
+class HttpUploadFileReconnectingEvent extends HttpUploadEvent {
+  final int attempt;
+
+  HttpUploadFileReconnectingEvent({
+    required super.fileId,
+    required this.attempt,
+  });
 }
 
 /// The upload of the file has failed. The next file is still uploaded.
@@ -160,37 +186,72 @@ Future<void> setupHttpUploadIsolate(
             final filePath = file.filePath;
             final isContentUri = filePath?.startsWith('content://') ?? false;
 
-            for (var attempt = 1; ; attempt++) {
+            Future<void> uploadFrom(int offset) async {
               // The file descriptor is consumed by the upload, so a fresh one
               // is needed for every attempt.
               final fileDescriptor = isContentUri ? await getFileDescriptorAndroid(uri: filePath!) : null;
-
-              try {
-                await ref
-                    .read(httpUploadProvider)
-                    .upload(
-                      client: client,
-                      stream: filePath == null && file.fileBytes != null ? Stream.value(file.fileBytes!) : null,
-                      path: !isContentUri ? filePath : null,
-                      fileDescriptor: fileDescriptor,
-                      contentLength: file.fileSize,
-                      target: uploadTask.device,
-                      remoteSessionId: uploadTask.remoteSessionId,
-                      fileId: file.fileId,
-                      token: file.remoteFileToken,
-                      onSendProgress: (progress) {
-                        sendToMain(
-                          IsolateTaskStreamResult.event(
-                            id: task.id,
-                            data: HttpUploadFileProgressEvent(
-                              fileId: file.fileId,
-                              progress: progress,
-                            ),
+              await ref
+                  .read(httpUploadProvider)
+                  .upload(
+                    client: client,
+                    stream: filePath == null && file.fileBytes != null ? Stream.value(file.fileBytes!) : null,
+                    path: !isContentUri ? filePath : null,
+                    fileDescriptor: fileDescriptor,
+                    contentLength: file.fileSize,
+                    target: uploadTask.device,
+                    remoteSessionId: uploadTask.remoteSessionId,
+                    fileId: file.fileId,
+                    token: file.remoteFileToken,
+                    offset: offset,
+                    onSendProgress: (progress) {
+                      sendToMain(
+                        IsolateTaskStreamResult.event(
+                          id: task.id,
+                          data: HttpUploadFileProgressEvent(
+                            fileId: file.fileId,
+                            progress: progress,
                           ),
-                        );
-                      },
-                      cancelToken: cancelToken,
-                    );
+                        ),
+                      );
+                    },
+                    cancelToken: cancelToken,
+                  );
+            }
+
+            Future<int> queryOffset() async {
+              final offset = await client.uploadOffset(
+                protocol: uploadTask.device.getProtocolType(),
+                ip: uploadTask.device.ip!,
+                port: uploadTask.device.port,
+                sessionId: uploadTask.remoteSessionId ?? '',
+                fileId: file.fileId,
+                token: file.remoteFileToken,
+              );
+              return offset.toInt();
+            }
+
+            if (file.resumable) {
+              await uploadWithResume(
+                initialOffset: file.queryOffsetFirst ? await queryOffset() : file.offset,
+                queryOffset: queryOffset,
+                upload: uploadFrom,
+                isCancelled: () => !ref.read(_cancelTokenProvider).containsKey(task.id),
+                sleep: Future<void>.delayed,
+                now: DateTime.now,
+                onReconnecting: (attempt) {
+                  sendToMain(
+                    IsolateTaskStreamResult.event(
+                      id: task.id,
+                      data: HttpUploadFileReconnectingEvent(fileId: file.fileId, attempt: attempt),
+                    ),
+                  );
+                },
+              );
+            }
+
+            for (var attempt = 1; !file.resumable; attempt++) {
+              try {
+                await uploadFrom(0);
                 break;
               } on RsHttpClientError_StatusCode catch (e) {
                 if (e.status != 422 || attempt >= _maxUploadAttempts) {

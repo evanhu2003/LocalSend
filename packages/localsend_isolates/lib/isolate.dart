@@ -24,6 +24,7 @@ export 'package:localsend_isolates/src/isolate/child/upload_isolate.dart'
         HttpUploadFileFailedEvent,
         HttpUploadFileFinishedEvent,
         HttpUploadFileProgressEvent,
+        HttpUploadFileReconnectingEvent,
         HttpUploadFileStartedEvent;
 export 'package:localsend_isolates/src/isolate/parent/actions.dart';
 export 'package:localsend_isolates/src/isolate/parent/actions_sync.dart';

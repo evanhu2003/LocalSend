@@ -45,6 +45,19 @@ class SendingFileMapper extends ClassMapperBase<SendingFile> {
     'errorMessage',
     _$errorMessage,
   );
+  static int _$resumeOffset(SendingFile v) => v.resumeOffset;
+  static const Field<SendingFile, int> _f$resumeOffset = Field(
+    'resumeOffset',
+    _$resumeOffset,
+    opt: true,
+    def: 0,
+  );
+  static int? _$reconnectAttempt(SendingFile v) => v.reconnectAttempt;
+  static const Field<SendingFile, int> _f$reconnectAttempt = Field(
+    'reconnectAttempt',
+    _$reconnectAttempt,
+    opt: true,
+  );
 
   @override
   final MappableFields<SendingFile> fields = const {
@@ -55,6 +68,8 @@ class SendingFileMapper extends ClassMapperBase<SendingFile> {
     #path: _f$path,
     #bytes: _f$bytes,
     #errorMessage: _f$errorMessage,
+    #resumeOffset: _f$resumeOffset,
+    #reconnectAttempt: _f$reconnectAttempt,
   };
 
   static SendingFile _instantiate(DecodingData data) {
@@ -66,6 +81,8 @@ class SendingFileMapper extends ClassMapperBase<SendingFile> {
       path: data.dec(_f$path),
       bytes: data.dec(_f$bytes),
       errorMessage: data.dec(_f$errorMessage),
+      resumeOffset: data.dec(_f$resumeOffset),
+      reconnectAttempt: data.dec(_f$reconnectAttempt),
     );
   }
 
@@ -138,6 +155,8 @@ abstract class SendingFileCopyWith<$R, $In extends SendingFile, $Out>
     String? path,
     List<int>? bytes,
     String? errorMessage,
+    int? resumeOffset,
+    int? reconnectAttempt,
   });
   SendingFileCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(Then<$Out2, $R2> t);
 }
@@ -168,6 +187,8 @@ class _SendingFileCopyWithImpl<$R, $Out>
     Object? path = $none,
     Object? bytes = $none,
     Object? errorMessage = $none,
+    int? resumeOffset,
+    Object? reconnectAttempt = $none,
   }) => $apply(
     FieldCopyWithData({
       if (file != null) #file: file,
@@ -177,6 +198,8 @@ class _SendingFileCopyWithImpl<$R, $Out>
       if (path != $none) #path: path,
       if (bytes != $none) #bytes: bytes,
       if (errorMessage != $none) #errorMessage: errorMessage,
+      if (resumeOffset != null) #resumeOffset: resumeOffset,
+      if (reconnectAttempt != $none) #reconnectAttempt: reconnectAttempt,
     }),
   );
   @override
@@ -188,6 +211,8 @@ class _SendingFileCopyWithImpl<$R, $Out>
     path: data.get(#path, or: $value.path),
     bytes: data.get(#bytes, or: $value.bytes),
     errorMessage: data.get(#errorMessage, or: $value.errorMessage),
+    resumeOffset: data.get(#resumeOffset, or: $value.resumeOffset),
+    reconnectAttempt: data.get(#reconnectAttempt, or: $value.reconnectAttempt),
   );
 
   @override

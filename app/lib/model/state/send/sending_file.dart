@@ -16,6 +16,13 @@ class SendingFile with SendingFileMappable {
   final List<int>? bytes; // web
   final String? errorMessage; // when failed; the live status is tracked in fileTransferProvider
 
+  /// Bytes of the file the receiver already holds from an earlier transfer
+  /// (resumable sessions): the upload starts there.
+  final int resumeOffset;
+
+  /// While the connection is broken: the current reconnect attempt.
+  final int? reconnectAttempt;
+
   const SendingFile({
     required this.file,
     required this.token,
@@ -24,6 +31,8 @@ class SendingFile with SendingFileMappable {
     required this.path,
     required this.bytes,
     required this.errorMessage,
+    this.resumeOffset = 0,
+    this.reconnectAttempt,
   });
 
   /// Custom toString() to avoid printing the bytes.

@@ -246,6 +246,9 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
       files: {
         for (final entry in requestState.files.entries) entry.key: entry.value.file.toRust(),
       },
+      // Resuming relies on the checksums (to verify the continued file) and on
+      // the certificate of the TLS connection (to identify this sender).
+      resumeSupport: createChecksums && target.https ? 1 : null,
     );
 
     rust_http.PrepareUploadResult? response;
@@ -351,6 +354,7 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
     }
 
     final Map<String, String> fileMap;
+    var resumeOffsets = <String, int>{};
     if (response.statusCode == 204) {
       // Nothing selected
       // Interpret this as "Read and close"
@@ -358,11 +362,14 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
     } else {
       try {
         fileMap = response.response!.files;
+        resumeOffsets = response.response!.resumeOffsets.map((fileId, offset) => MapEntry(fileId, offset.toInt()));
         final remoteSessionId = response.response!.sessionId;
+        final resumable = response.response!.resumeSupport != null;
         state = state.updateSession(
           sessionId: sessionId,
           state: (s) => s?.copyWith(
             remoteSessionId: remoteSessionId,
+            resumable: resumable,
           ),
         );
       } catch (e) {
@@ -400,7 +407,9 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
 
     final sendingFiles = {
       for (final file in requestState.files.values)
-        file.file.id: fileMap.containsKey(file.file.id) ? file.copyWith(token: fileMap[file.file.id]) : file,
+        file.file.id: fileMap.containsKey(file.file.id)
+            ? file.copyWith(token: fileMap[file.file.id], resumeOffset: resumeOffsets[file.file.id] ?? 0)
+            : file,
     };
 
     // Recreate the transfer state: the hash progress is no longer needed and must not be
@@ -577,6 +586,7 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
     await _sendFiles(
       sessionId: sessionId,
       files: [file],
+      queryOffsetFirst: isRetry,
     );
 
     if (isRetry) {
@@ -593,6 +603,7 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
   Future<void> _sendFiles({
     required String sessionId,
     required List<SendingFile> files,
+    bool queryOffsetFirst = false,
   }) async {
     final sessionState = state[sessionId];
     if (sessionState == null) {
@@ -608,6 +619,10 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
             filePath: file.path,
             fileBytes: file.bytes,
             fileSize: file.file.size,
+            resumable: sessionState.resumable,
+            offset: file.resumeOffset,
+            // A retried file continues wherever the receiver got to.
+            queryOffsetFirst: sessionState.resumable && queryOffsetFirst,
           ),
     ];
 
@@ -644,6 +659,9 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
             _logger.info('Sending ${state[sessionId]?.files[event.fileId]?.file.fileName}');
             ref.notifier(fileTransferProvider).setStatus(sessionId: sessionId, fileId: event.fileId, status: FileStatus.sending);
           case HttpUploadFileProgressEvent():
+            if (state[sessionId]?.files[event.fileId]?.reconnectAttempt != null) {
+              _setReconnectAttempt(sessionId, event.fileId, null);
+            }
             ref
                 .notifier(fileTransferProvider)
                 .setProgress(
@@ -652,6 +670,9 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
                   progress: event.progress,
                 );
             _updateForegroundServiceProgress(sessionId);
+          case HttpUploadFileReconnectingEvent():
+            _logger.info('Reconnecting ${state[sessionId]?.files[event.fileId]?.file.fileName} (attempt ${event.attempt})');
+            _setReconnectAttempt(sessionId, event.fileId, event.attempt);
           case HttpUploadFileFinishedEvent():
             // set progress to 100% when successfully finished
             ref
@@ -664,6 +685,7 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
             _updateForegroundServiceProgress(sessionId);
             ref.notifier(fileTransferProvider).setStatus(sessionId: sessionId, fileId: event.fileId, status: FileStatus.finished);
           case HttpUploadFileFailedEvent():
+            _setReconnectAttempt(sessionId, event.fileId, null);
             _logger.warning('Error while sending file ${state[sessionId]?.files[event.fileId]?.file.fileName}: ${event.error}');
             ref.notifier(fileTransferProvider).setStatus(sessionId: sessionId, fileId: event.fileId, status: FileStatus.failed);
             state = state.updateSession(
@@ -704,6 +726,15 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
         ),
       );
     }
+  }
+
+  void _setReconnectAttempt(String sessionId, String fileId, int? attempt) {
+    state = state.updateSession(
+      sessionId: sessionId,
+      state: (s) => s?.copyWith(
+        files: s.files.map((key, value) => MapEntry(key, key == fileId ? value.copyWith(reconnectAttempt: attempt) : value)),
+      ),
+    );
   }
 
   /// Closes the send-session and sends a cancel event to the receiver.

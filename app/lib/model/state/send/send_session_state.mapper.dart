@@ -76,6 +76,13 @@ class SendSessionStateMapper extends ClassMapperBase<SendSessionState> {
     'errorMessage',
     _$errorMessage,
   );
+  static bool _$resumable(SendSessionState v) => v.resumable;
+  static const Field<SendSessionState, bool> _f$resumable = Field(
+    'resumable',
+    _$resumable,
+    opt: true,
+    def: false,
+  );
 
   @override
   final MappableFields<SendSessionState> fields = const {
@@ -90,6 +97,7 @@ class SendSessionStateMapper extends ClassMapperBase<SendSessionState> {
     #endTime: _f$endTime,
     #sendingTasks: _f$sendingTasks,
     #errorMessage: _f$errorMessage,
+    #resumable: _f$resumable,
   };
 
   static SendSessionState _instantiate(DecodingData data) {
@@ -105,6 +113,7 @@ class SendSessionStateMapper extends ClassMapperBase<SendSessionState> {
       endTime: data.dec(_f$endTime),
       sendingTasks: data.dec(_f$sendingTasks),
       errorMessage: data.dec(_f$errorMessage),
+      resumable: data.dec(_f$resumable),
     );
   }
 
@@ -192,6 +201,7 @@ abstract class SendSessionStateCopyWith<$R, $In extends SendSessionState, $Out>
     int? endTime,
     List<SendingTask>? sendingTasks,
     String? errorMessage,
+    bool? resumable,
   });
   SendSessionStateCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(
     Then<$Out2, $R2> t,
@@ -243,6 +253,7 @@ class _SendSessionStateCopyWithImpl<$R, $Out>
     Object? endTime = $none,
     Object? sendingTasks = $none,
     Object? errorMessage = $none,
+    bool? resumable,
   }) => $apply(
     FieldCopyWithData({
       if (sessionId != null) #sessionId: sessionId,
@@ -256,6 +267,7 @@ class _SendSessionStateCopyWithImpl<$R, $Out>
       if (endTime != $none) #endTime: endTime,
       if (sendingTasks != $none) #sendingTasks: sendingTasks,
       if (errorMessage != $none) #errorMessage: errorMessage,
+      if (resumable != null) #resumable: resumable,
     }),
   );
   @override
@@ -271,6 +283,7 @@ class _SendSessionStateCopyWithImpl<$R, $Out>
     endTime: data.get(#endTime, or: $value.endTime),
     sendingTasks: data.get(#sendingTasks, or: $value.sendingTasks),
     errorMessage: data.get(#errorMessage, or: $value.errorMessage),
+    resumable: data.get(#resumable, or: $value.resumable),
   );
 
   @override

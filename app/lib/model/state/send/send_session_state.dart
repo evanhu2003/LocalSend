@@ -32,6 +32,10 @@ class SendSessionState with SendSessionStateMappable implements SessionState {
   final List<SendingTask>? sendingTasks; // used to cancel tasks
   final String? errorMessage;
 
+  /// Whether the receiver agreed to resumable uploads: interrupted files
+  /// reconnect and continue where they broke off.
+  final bool resumable;
+
   const SendSessionState({
     required this.sessionId,
     required this.remoteSessionId,
@@ -44,6 +48,7 @@ class SendSessionState with SendSessionStateMappable implements SessionState {
     required this.endTime,
     required this.sendingTasks,
     required this.errorMessage,
+    this.resumable = false,
   });
 
   /// Custom toString() to avoid printing the bytes.

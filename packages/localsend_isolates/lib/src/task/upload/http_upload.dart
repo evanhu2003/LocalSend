@@ -10,7 +10,8 @@ final httpUploadProvider = ViewProvider((ref) => HttpUploadService());
 class HttpUploadService {
   const HttpUploadService();
 
-  /// Uploads a single file.
+  /// Uploads a single file, from [offset] on (resumable sessions; 0 otherwise).
+  /// The progress is the fraction of the complete file.
   ///
   /// [client] must be pinned to [target] so the file content is not streamed
   /// to a peer other than the one the session was negotiated with. It is
@@ -26,6 +27,7 @@ class HttpUploadService {
     required String? remoteSessionId,
     required String fileId,
     required String token,
+    required int offset,
     required void Function(double progress) onSendProgress,
     required RsCancellationToken cancelToken,
   }) async {
@@ -46,7 +48,7 @@ class HttpUploadService {
           path: path,
           fileDescriptor: fileDescriptor,
           contentLength: BigInt.from(contentLength),
-          offset: BigInt.zero,
+          offset: BigInt.from(offset),
           cancelToken: cancelToken,
         )
         .forEach((event) {
