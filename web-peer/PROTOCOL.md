@@ -127,7 +127,7 @@ fingerprint = uppercase_hex( SHA-256( 憑證的 DER 位元組 ) )   // 64 個字
 - `deviceType`:序列化為 `"mobile"` | `"desktop"` | `"web"` | `"headless"` | `"server"`(`discovery.rs:66-89`);
   解析時大小寫不拘,未知值 → `desktop`(`discovery.rs:86-99`)。手錶(Android)送 `"mobile"`(`app/util/native/device_info_helper.dart:27-29`)。
   PC 建議送 `"desktop"`。
-- `deviceModel`:自由字串,可省略。手錶送 Android brand 的 PascalCase(`device_info_helper.dart:40-42`)。PC 建議 `"Windows"`。
+- `deviceModel`:自由字串,可省略。手錶送 Android brand 的 PascalCase(`device_info_helper.dart:40-42`)。PC 依作業系統送 `"Windows"`、`"macOS"` 或 `"Linux"`(和官方 App 相同,`device_info_helper.dart:49-57`)。
 
 ### 2.2 `MulticastDto`(UDP 宣告)
 

@@ -1,6 +1,9 @@
 // 全域狀態 + 變更通知（給網頁 SSE 用）
 import { EventEmitter } from 'node:events';
 
+// 和官方 App 相同的桌面型號字串（app/lib/util/native/device_info_helper.dart:49-57）
+const DEVICE_MODEL = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }[process.platform] ?? null;
+
 export class AppState extends EventEmitter {
   constructor(config, identity) {
     super();
@@ -31,7 +34,7 @@ export class AppState extends EventEmitter {
     return {
       alias: this.config.alias,
       version: '2.2',
-      deviceModel: 'Windows',
+      deviceModel: DEVICE_MODEL,
       deviceType: 'desktop',
       fingerprint: this.identity.fingerprint,
       port: this.config.port,
